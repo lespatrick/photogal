@@ -1,15 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 import db from '@/lib/db';
-import { createClientToken } from '@/lib/auth';
+import { createClientToken, getAuthSecret } from '@/lib/auth';
 
 function getClientIp(req: NextRequest): string {
   const forwarded = req.headers.get('x-forwarded-for');
   if (forwarded) {
-    return forwarded.split(',')[0].trim();
+    const list = forwarded.split(',').map(s => s.trim()).filter(Boolean);
+    if (list.length > 0) return list[0].replace(/[^a-fA-F0-9:.]/g, '').substring(0, 45);
   }
   const realIp = req.headers.get('x-real-ip') || req.headers.get('cf-connecting-ip');
-  if (realIp) return realIp.trim();
+  if (realIp) return realIp.trim().replace(/[^a-fA-F0-9:.]/g, '').substring(0, 45);
   return '127.0.0.1';
 }
 
@@ -69,7 +70,7 @@ export async function POST(
 
     // 2. Rate limiting per IP + gallery
     const clientIp = getClientIp(req);
-    const ipHash = crypto.createHash('sha256').update(clientIp + (process.env.AUTH_SECRET || '')).digest('hex');
+    const ipHash = crypto.createHash('sha256').update(clientIp + getAuthSecret()).digest('hex');
 
     // Count failed attempts in the last 15 minutes for this IP
     const recentFails = (db.prepare(`
@@ -86,8 +87,14 @@ export async function POST(
       }, { status: 429 });
     }
 
-    // 3. Progressive backoff delay (tarpit) after 3-4 failed attempts
-    if (recentFails >= 3) {
+    // Check gallery-wide failed attempts in the last 15 minutes
+    const totalGalleryFails = (db.prepare(`
+      SELECT COUNT(*) as count FROM pin_attempts
+      WHERE gallery_id = ? AND success = 0 AND attempted_at > datetime('now', '-15 minutes')
+    `).get(gallery.id) as any)?.count || 0;
+
+    // 3. Progressive backoff delay (tarpit) after 3 failed attempts from this IP OR if gallery is under general brute force
+    if (recentFails >= 3 || totalGalleryFails >= 20) {
       await new Promise((resolve) => setTimeout(resolve, 2500));
     }
 
@@ -101,17 +108,11 @@ export async function POST(
         VALUES (?, ?, ?, 0)
       `).run(crypto.randomUUID(), gallery.id, ipHash);
 
-      // Check global failed attempts on this gallery across all IPs in the last 1 hour
-      const totalGalleryFails = (db.prepare(`
-        SELECT COUNT(*) as count FROM pin_attempts
-        WHERE gallery_id = ? AND success = 0 AND attempted_at > datetime('now', '-1 hour')
-      `).get(gallery.id) as any)?.count || 0;
-
-      // Emergency lockdown threshold raised to 50 to prevent trivial DoS against clients
-      if (totalGalleryFails >= 50) {
+      // Only lock the entire gallery if there is an extreme distributed flood (>150 failed attempts in 15 min)
+      if (totalGalleryFails >= 150) {
         db.prepare(`
           UPDATE galleries 
-          SET pin_locked_until = datetime('now', '+1 hour') 
+          SET pin_locked_until = datetime('now', '+30 minutes') 
           WHERE id = ?
         `).run(gallery.id);
 

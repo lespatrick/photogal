@@ -1,13 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import db from '@/lib/db';
-import { verifyClientToken } from '@/lib/auth';
+import { verifyClientToken, extractClientToken } from '@/lib/auth';
 
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ slug: string }> }
 ) {
   const { slug } = await params;
-  const token = req.headers.get('x-client-token');
 
   try {
     const gallery = db.prepare('SELECT id, status, max_selections FROM galleries WHERE slug = ?').get(slug) as any;
@@ -16,6 +15,7 @@ export async function POST(
       return NextResponse.json({ error: 'Galeria nie istnieje' }, { status: 404 });
     }
 
+    const token = extractClientToken(req, gallery.id);
     if (!token || !verifyClientToken(token, gallery.id)) {
       return NextResponse.json({ error: 'Brak autoryzacji' }, { status: 401 });
     }
@@ -26,32 +26,40 @@ export async function POST(
 
     const { notes } = await req.json().catch(() => ({ notes: '' }));
 
-    const selectedCount = (db.prepare('SELECT COUNT(*) as count FROM selections WHERE gallery_id = ?').get(gallery.id) as any)?.count || 0;
+    const finalizeTx = db.transaction(() => {
+      const selectedCount = (db.prepare('SELECT COUNT(*) as count FROM selections WHERE gallery_id = ?').get(gallery.id) as any)?.count || 0;
 
-    if (selectedCount === 0) {
-      return NextResponse.json({ error: 'Wybierz co najmniej jedno zdjęcie przed wysłaniem.' }, { status: 400 });
+      if (selectedCount === 0) {
+        return { error: 'Wybierz co najmniej jedno zdjęcie przed wysłaniem.' };
+      }
+
+      if (gallery.max_selections > 0 && selectedCount > gallery.max_selections) {
+        return {
+          error: `Liczba wybranych zdjęć (${selectedCount}) przekracza maksymalny limit pakietu (${gallery.max_selections}).`,
+        };
+      }
+
+      db.prepare(`
+        UPDATE galleries 
+        SET 
+          status = 'submitted',
+          client_notes = ?,
+          submitted_at = CURRENT_TIMESTAMP,
+          updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `).run(notes?.trim() || null, gallery.id);
+
+      return { success: true, selectedCount };
+    })();
+
+    if (finalizeTx.error) {
+      return NextResponse.json({ error: finalizeTx.error }, { status: 400 });
     }
-
-    if (gallery.max_selections > 0 && selectedCount > gallery.max_selections) {
-      return NextResponse.json({
-        error: `Liczba wybranych zdjęć (${selectedCount}) przekracza maksymalny limit pakietu (${gallery.max_selections}).`,
-      }, { status: 400 });
-    }
-
-    db.prepare(`
-      UPDATE galleries 
-      SET 
-        status = 'submitted',
-        client_notes = ?,
-        submitted_at = CURRENT_TIMESTAMP,
-        updated_at = CURRENT_TIMESTAMP
-      WHERE id = ?
-    `).run(notes?.trim() || null, gallery.id);
 
     return NextResponse.json({
       success: true,
       message: 'Selekcja została pomyślnie wysłana do fotografa!',
-      selectedCount,
+      selectedCount: finalizeTx.selectedCount,
     });
   } catch (error) {
     console.error('Finalize error:', error);

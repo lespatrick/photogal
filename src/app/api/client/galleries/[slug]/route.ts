@@ -1,13 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import db from '@/lib/db';
-import { verifyClientToken } from '@/lib/auth';
+import { verifyClientToken, extractClientToken } from '@/lib/auth';
 
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ slug: string }> }
 ) {
   const { slug } = await params;
-  const token = req.headers.get('x-client-token');
 
   try {
     const gallery = db.prepare(`
@@ -25,6 +24,7 @@ export async function GET(
       return NextResponse.json({ error: 'Galeria nie istnieje' }, { status: 404 });
     }
 
+    const token = extractClientToken(req, gallery.id);
     const isAuthorized = token ? verifyClientToken(token, gallery.id) : false;
 
     if (!isAuthorized) {
