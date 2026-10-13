@@ -32,6 +32,15 @@ interface GalleryPublicData {
   submitted_at?: string;
 }
 
+async function parseJsonResponse(res: Response): Promise<any> {
+  const text = await res.text();
+  try {
+    return text ? JSON.parse(text) : {};
+  } catch {
+    return { error: text || 'Błąd odpowiedzi serwera' };
+  }
+}
+
 export default function ClientGalleryPage({
   params,
 }: {
@@ -80,9 +89,9 @@ export default function ClientGalleryPage({
       }
 
       const res = await fetch(`/api/client/galleries/${slug}`, { headers });
-      if (!res.ok) throw new Error('Nie znaleziono galerii');
+      const data = await parseJsonResponse(res);
+      if (!res.ok) throw new Error(data.error || 'Nie znaleziono galerii');
 
-      const data = await res.json();
       if (data.unlocked) {
         setUnlocked(true);
         setGallery(data.gallery);
@@ -117,7 +126,7 @@ export default function ClientGalleryPage({
         body: JSON.stringify({ pin: pinInput.trim() }),
       });
 
-      const data = await res.json();
+      const data = await parseJsonResponse(res);
       if (!res.ok) {
         setPinError(data.error || 'Nieprawidłowy PIN');
         return;
@@ -166,7 +175,7 @@ export default function ClientGalleryPage({
         }),
       });
 
-      const data = await res.json();
+      const data = await parseJsonResponse(res);
       if (!res.ok) {
         setSelectedIds(selectedIds);
         throw new Error(data.error || 'Błąd zapisu wyboru');
@@ -245,7 +254,7 @@ export default function ClientGalleryPage({
         body: JSON.stringify({ notes: clientNotes }),
       });
 
-      const data = await res.json();
+      const data = await parseJsonResponse(res);
       if (!res.ok) throw new Error(data.error || 'Błąd finalizacji');
 
       toast('Selekcja została pomyślnie przesłana.', 'success');

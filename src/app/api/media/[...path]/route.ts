@@ -59,12 +59,16 @@ export async function GET(
       if (!isClientAuthorized) {
         // Allow only cover thumbnail for public PIN gate preview
         if (mediaType === 'thumb') {
-          const isCover = db.prepare(`
-            SELECT id FROM photos 
-            WHERE gallery_id = ? AND thumb_path = ? AND (
-              id = ? OR id = (SELECT id FROM photos WHERE gallery_id = ? ORDER BY order_index ASC, created_at ASC LIMIT 1)
-            )
-          `).get(galleryId, relativePath, gallery.cover_photo_id || '', galleryId);
+          const isCover = gallery.cover_photo_id
+            ? db.prepare(`
+                SELECT id FROM photos 
+                WHERE gallery_id = ? AND thumb_path = ? AND id = ?
+              `).get(galleryId, relativePath, gallery.cover_photo_id)
+            : db.prepare(`
+                SELECT id FROM photos 
+                WHERE gallery_id = ? AND thumb_path = ?
+                ORDER BY order_index ASC, created_at ASC LIMIT 1
+              `).get(galleryId, relativePath);
 
           if (!isCover) {
             return new NextResponse('Brak autoryzacji do przeglądania zdjęć', { status: 401 });
@@ -75,18 +79,18 @@ export async function GET(
       } else {
         // Client is authorized. Check restrictions on original camera files
         if (mediaType === 'original') {
-          if (!gallery.allow_zip_download) {
+          if (!gallery.allow_zip_download || gallery.status !== 'submitted') {
             return new NextResponse('Pobieranie plików oryginalnych nie jest udostępnione', { status: 403 });
           }
 
-          // Originals only allowed for photos selected by client, or all if gallery is submitted
+          // Originals strictly allowed ONLY for photos explicitly selected by client
           const isSelected = db.prepare(`
             SELECT s.id FROM selections s
             JOIN photos p ON p.id = s.photo_id
             WHERE s.gallery_id = ? AND p.original_path = ?
           `).get(galleryId, relativePath);
 
-          if (!isSelected && gallery.status !== 'submitted') {
+          if (!isSelected) {
             return new NextResponse('Zdjęcie nie zostało wybrane w pakiecie', { status: 403 });
           }
         }
@@ -107,19 +111,31 @@ export async function GET(
     if (ext === '.webp') contentType = 'image/webp';
     else if (ext === '.jpg' || ext === '.jpeg') contentType = 'image/jpeg';
     else if (ext === '.png') contentType = 'image/png';
+    else if (ext === '.avif') contentType = 'image/avif';
+    else if (ext === '.heic' || ext === '.heif') contentType = 'image/heic';
+    else if (ext === '.tiff' || ext === '.tif') contentType = 'image/tiff';
 
     const fileStream = fs.createReadStream(fullPath);
     const readable = Readable.toWeb(fileStream);
 
+    const headers: Record<string, string> = {
+      'Content-Type': contentType,
+      'Content-Length': stat.size.toString(),
+      'ETag': etag,
+      'Last-Modified': stat.mtime.toUTCString(),
+      'Cache-Control': 'private, max-age=86400',
+    };
+
+    if (mediaType === 'original') {
+      const photoRow = db.prepare('SELECT filename FROM photos WHERE gallery_id = ? AND original_path = ?').get(galleryId, relativePath) as { filename: string } | undefined;
+      const downloadName = photoRow?.filename || path.basename(fullPath);
+      const asciiFallback = downloadName.replace(/[^a-zA-Z0-9._-]/g, '_');
+      headers['Content-Disposition'] = `attachment; filename="${asciiFallback}"; filename*=UTF-8''${encodeURIComponent(downloadName)}`;
+    }
+
     return new NextResponse(readable as ReadableStream, {
       status: 200,
-      headers: {
-        'Content-Type': contentType,
-        'Content-Length': stat.size.toString(),
-        'ETag': etag,
-        'Last-Modified': stat.mtime.toUTCString(),
-        'Cache-Control': 'private, max-age=86400',
-      },
+      headers,
     });
   } catch (error) {
     console.error('Error serving media:', error);

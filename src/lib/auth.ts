@@ -3,7 +3,7 @@ import util from 'util';
 import { cookies } from 'next/headers';
 import db from './db';
 
-import { NextRequest } from 'next/server';
+import type { NextRequest } from 'next/server';
 
 const scryptAsync = util.promisify(crypto.scrypt);
 

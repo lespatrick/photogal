@@ -15,6 +15,7 @@ const db: Database.Database = new Database(DB_PATH);
 
 // Pragmas for performance and data integrity
 db.pragma('journal_mode = WAL');
+db.pragma('busy_timeout = 5000');
 db.pragma('foreign_keys = ON');
 
 export function initDatabase() {
@@ -150,4 +151,5 @@ export function initDatabase() {
 // Ensure database is initialized upon module load
 initDatabase();
 
+export { db };
 export default db;

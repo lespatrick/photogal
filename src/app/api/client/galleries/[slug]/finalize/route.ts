@@ -27,30 +27,45 @@ export async function POST(
     const { notes } = await req.json().catch(() => ({ notes: '' }));
 
     const finalizeTx = db.transaction(() => {
+      const current = db.prepare('SELECT status, max_selections FROM galleries WHERE id = ?').get(gallery.id) as { status: string; max_selections: number } | undefined;
+      if (!current || current.status === 'submitted') {
+        return { alreadySubmitted: true };
+      }
+
       const selectedCount = (db.prepare('SELECT COUNT(*) as count FROM selections WHERE gallery_id = ?').get(gallery.id) as any)?.count || 0;
 
       if (selectedCount === 0) {
         return { error: 'Wybierz co najmniej jedno zdjęcie przed wysłaniem.' };
       }
 
-      if (gallery.max_selections > 0 && selectedCount > gallery.max_selections) {
+      if (current.max_selections > 0 && selectedCount > current.max_selections) {
         return {
-          error: `Liczba wybranych zdjęć (${selectedCount}) przekracza maksymalny limit pakietu (${gallery.max_selections}).`,
+          error: `Liczba wybranych zdjęć (${selectedCount}) przekracza maksymalny limit pakietu (${current.max_selections}).`,
         };
       }
 
-      db.prepare(`
+      const safeNotes = typeof notes === 'string' && notes.trim() ? notes.trim().slice(0, 3000) : null;
+
+      const updateResult = db.prepare(`
         UPDATE galleries 
         SET 
           status = 'submitted',
           client_notes = ?,
           submitted_at = CURRENT_TIMESTAMP,
           updated_at = CURRENT_TIMESTAMP
-        WHERE id = ?
-      `).run(notes?.trim() || null, gallery.id);
+        WHERE id = ? AND status != 'submitted'
+      `).run(safeNotes, gallery.id);
+
+      if (updateResult.changes === 0) {
+        return { alreadySubmitted: true };
+      }
 
       return { success: true, selectedCount };
-    })();
+    }).immediate();
+
+    if (finalizeTx.alreadySubmitted) {
+      return NextResponse.json({ message: 'Selekcja została już wcześniej sfinalizowana.' });
+    }
 
     if (finalizeTx.error) {
       return NextResponse.json({ error: finalizeTx.error }, { status: 400 });

@@ -51,12 +51,21 @@ export function deleteGalleryStorage(galleryId: string) {
 }
 
 export function deletePhotoFiles(galleryId: string, originalPath: string, thumbPath: string, previewPath: string) {
+  const safeId = path.basename(galleryId);
+  const galleryBase = path.resolve(STORAGE_DIR, 'galleries', safeId);
+
   const fullOriginal = resolveSafeStoragePath(originalPath);
   const fullThumb = resolveSafeStoragePath(thumbPath);
   const fullPreview = resolveSafeStoragePath(previewPath);
 
-  if (fullOriginal && fs.existsSync(fullOriginal)) fs.unlinkSync(fullOriginal);
-  if (fullThumb && fs.existsSync(fullThumb)) fs.unlinkSync(fullThumb);
-  if (fullPreview && fs.existsSync(fullPreview)) fs.unlinkSync(fullPreview);
+  if (fullOriginal && fullOriginal.startsWith(galleryBase + path.sep) && fs.existsSync(fullOriginal)) {
+    try { fs.unlinkSync(fullOriginal); } catch {}
+  }
+  if (fullThumb && fullThumb.startsWith(galleryBase + path.sep) && fs.existsSync(fullThumb)) {
+    try { fs.unlinkSync(fullThumb); } catch {}
+  }
+  if (fullPreview && fullPreview.startsWith(galleryBase + path.sep) && fs.existsSync(fullPreview)) {
+    try { fs.unlinkSync(fullPreview); } catch {}
+  }
 }
 

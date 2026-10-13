@@ -29,6 +29,24 @@ interface GalleryItem {
   created_at: string;
 }
 
+async function parseJsonResponse(res: Response): Promise<any> {
+  const text = await res.text();
+  try {
+    return text ? JSON.parse(text) : {};
+  } catch {
+    return { error: text || 'Błąd odpowiedzi serwera' };
+  }
+}
+
+function generateSecurePin(): string {
+  if (typeof window !== 'undefined' && window.crypto) {
+    const array = new Uint32Array(1);
+    window.crypto.getRandomValues(array);
+    return ((array[0] % 9000) + 1000).toString();
+  }
+  return Math.floor(1000 + Math.random() * 9000).toString();
+}
+
 export default function AdminDashboardPage() {
   const router = useRouter();
   const { toast } = useToast();
@@ -42,7 +60,7 @@ export default function AdminDashboardPage() {
   const [formTitle, setFormTitle] = useState('');
   const [formDate, setFormDate] = useState(new Date().toISOString().split('T')[0]);
   const [formWelcome, setFormWelcome] = useState('Wybierz swoje ulubione kadry serduszkiem, aby przekazać je do autorskiego retuszu.');
-  const [formPin, setFormPin] = useState(Math.floor(1000 + Math.random() * 9000).toString());
+  const [formPin, setFormPin] = useState(generateSecurePin());
   const [formMax, setFormMax] = useState<number | ''>(20);
   const [formZip, setFormZip] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -69,7 +87,7 @@ export default function AdminDashboardPage() {
   const fetchPasskeys = async () => {
     try {
       const res = await fetch('/api/admin/passkey/list');
-      const data = await res.json();
+      const data = await parseJsonResponse(res);
       setPasskeys(data.keys || []);
     } catch {}
   };
@@ -177,7 +195,7 @@ export default function AdminDashboardPage() {
         router.push('/admin/login');
         return;
       }
-      const data = await res.json();
+      const data = await parseJsonResponse(res);
       setGalleries(data.galleries || []);
     } catch {
       toast('Nie udało się załadować galerii', 'error');

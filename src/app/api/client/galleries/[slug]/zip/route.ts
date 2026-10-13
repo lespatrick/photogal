@@ -45,6 +45,17 @@ export async function GET(
     const archive = new ZipArchive({ zlib: { level: 0 } });
     const passThrough = new PassThrough();
 
+    archive.on('error', (err: any) => {
+      console.error('Client ZIP stream error:', err);
+      passThrough.destroy(err);
+    });
+
+    passThrough.on('close', () => {
+      if (!archive.destroyed) {
+        archive.destroy();
+      }
+    });
+
     archive.pipe(passThrough);
 
     const nameTracker = new Map<string, number>();

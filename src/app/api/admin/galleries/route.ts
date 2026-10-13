@@ -65,7 +65,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Default PIN: 4 random digits if not provided
-    const finalPin = pin_code?.trim() || Math.floor(1000 + Math.random() * 9000).toString();
+    const finalPin = pin_code?.trim() || crypto.randomInt(1000, 10000).toString();
 
     db.prepare(`
       INSERT INTO galleries (id, slug, title, shoot_date, welcome_text, pin_code, max_selections, allow_zip_download, status)

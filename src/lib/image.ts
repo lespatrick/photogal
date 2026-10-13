@@ -76,10 +76,11 @@ export async function processAndSavePhoto(
     await fs.promises.writeFile(previewFullPath, previewBuffer);
     writtenFiles.push(previewFullPath);
 
-    // 4. Generate WebP Thumbnail directly from the scaled previewBuffer (saving 3x CPU decoding)
-    await sharp(previewBuffer)
+    // 4. Generate WebP Thumbnail directly from source buffer to eliminate lossy re-encoding artifacts
+    await sharp(buffer)
+      .rotate()
       .resize(600, 600, { fit: 'inside', withoutEnlargement: true })
-      .webp({ quality: 80, effort: 2 })
+      .webp({ quality: 82, effort: 3 })
       .toFile(thumbFullPath);
     writtenFiles.push(thumbFullPath);
 

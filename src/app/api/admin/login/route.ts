@@ -66,10 +66,12 @@ export async function POST(req: NextRequest) {
     const isValid = !!admin && isPasswordValid;
 
     if (!isValid) {
-      if (failedAttemptsMap.size < MAX_MAP_ENTRIES) {
-        const prev = failedAttemptsMap.get(ipHash) || { count: 0, lastAttempt: now };
-        failedAttemptsMap.set(ipHash, { count: prev.count + 1, lastAttempt: now });
+      if (failedAttemptsMap.size >= MAX_MAP_ENTRIES) {
+        const oldestKey = failedAttemptsMap.keys().next().value;
+        if (oldestKey) failedAttemptsMap.delete(oldestKey);
       }
+      const prev = failedAttemptsMap.get(ipHash) || { count: 0, lastAttempt: now };
+      failedAttemptsMap.set(ipHash, { count: prev.count + 1, lastAttempt: now });
       return NextResponse.json({ error: 'Nieprawidłowy login lub hasło.' }, { status: 401 });
     }
 

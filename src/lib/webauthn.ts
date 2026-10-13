@@ -20,9 +20,13 @@ export function getWebAuthnConfig(req: Request) {
 }
 
 export function saveChallenge(challenge: string, userType: 'admin_register' | 'admin_login', adminId?: string): string {
-  // Clean expired challenges
   const now = Date.now();
-  db.prepare('DELETE FROM auth_challenges WHERE expires_at < ?').run(now);
+  // Prune expired challenges occasionally (10% of calls) to avoid redundant write locks on every call
+  if (Math.random() < 0.1) {
+    try {
+      db.prepare('DELETE FROM auth_challenges WHERE expires_at < ?').run(now);
+    } catch {}
+  }
 
   const id = crypto.randomUUID();
   const expiresAt = now + 1000 * 60 * 5; // 5 minutes TTL

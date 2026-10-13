@@ -38,6 +38,15 @@ interface GalleryData {
   submitted_at?: string;
 }
 
+async function parseJsonResponse(res: Response): Promise<any> {
+  const text = await res.text();
+  try {
+    return text ? JSON.parse(text) : {};
+  } catch {
+    return { error: text || 'Błąd odpowiedzi serwera' };
+  }
+}
+
 export default function GalleryManagementPage({
   params,
 }: {
@@ -90,7 +99,7 @@ export default function GalleryManagementPage({
     try {
       const res = await fetch(`/api/admin/galleries/${galleryId}/security`);
       if (res.ok) {
-        const sec = await res.json();
+        const sec = await parseJsonResponse(res);
         setSecurityInfo(sec);
       }
     } catch {}
@@ -115,8 +124,8 @@ export default function GalleryManagementPage({
         router.push('/admin/login');
         return;
       }
-      if (!res.ok) throw new Error('Nie znaleziono galerii');
-      const data = await res.json();
+      const data = await parseJsonResponse(res);
+      if (!res.ok) throw new Error(data.error || 'Nie znaleziono galerii');
       setGallery(data.gallery);
       setPhotos(data.photos || []);
 
@@ -162,7 +171,7 @@ export default function GalleryManagementPage({
             body: formData,
           });
 
-          const data = await res.json();
+          const data = await parseJsonResponse(res);
           if (res.ok) {
             totalUploaded += data.count || chunk.length;
           } else {
@@ -252,7 +261,7 @@ export default function GalleryManagementPage({
   const handleOpenExport = async () => {
     try {
       const res = await fetch(`/api/admin/galleries/${galleryId}/export`);
-      const data = await res.json();
+      const data = await parseJsonResponse(res);
       setExportData(data);
       setExportModalOpen(true);
     } catch {

@@ -78,7 +78,7 @@ export async function POST(
         isSelected,
         selectedIds,
       };
-    })();
+    }).immediate();
 
     if (txResult.limitReached) {
       return NextResponse.json({
