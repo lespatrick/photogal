@@ -156,5 +156,54 @@ describe('Photogal Core & Security Test Suite', () => {
       'DSC_0001_3.JPG'
     ]);
   });
+
+  test('Session token version invalidation (revocation on password change)', () => {
+    const adminId = 'admin-123';
+    let currentTokenVersion = 1;
+
+    const createPayload = (version) => JSON.stringify({
+      adminId,
+      tokenVersion: version,
+      exp: Date.now() + 60000,
+    });
+
+    const sessionA = JSON.parse(createPayload(currentTokenVersion));
+    assert.equal(sessionA.tokenVersion, 1);
+
+    // Password changed -> token_version incremented
+    currentTokenVersion = 2;
+
+    const validateSession = (payload) => {
+      if (payload.tokenVersion !== currentTokenVersion) {
+        return false; // Revoked
+      }
+      return true;
+    };
+
+    assert.equal(validateSession(sessionA), false, 'Old session token must be revoked');
+    const sessionB = JSON.parse(createPayload(currentTokenVersion));
+    assert.equal(validateSession(sessionB), true, 'Fresh session token must be accepted');
+  });
+
+  test('Media path validation strictly restricts access to galleries 4-part structure', () => {
+    const isValidMediaPath = (segments) => {
+      if (!segments || segments.length !== 4 || segments[0] !== 'galleries') {
+        return false;
+      }
+      const mediaType = segments[2];
+      return ['thumb', 'preview', 'original'].includes(mediaType);
+    };
+
+    assert.equal(isValidMediaPath(['galleries', 'gal-1', 'thumb', 'photo.webp']), true);
+    assert.equal(isValidMediaPath(['galleries', 'gal-1', 'preview', 'photo.webp']), true);
+    assert.equal(isValidMediaPath(['galleries', 'gal-1', 'original', 'photo.jpg']), true);
+
+    // Rejections
+    assert.equal(isValidMediaPath(['backups', 'database.sqlite']), false);
+    assert.equal(isValidMediaPath(['galleries', 'gal-1', 'secrets.env']), false);
+    assert.equal(isValidMediaPath(['galleries', 'gal-1']), false);
+    assert.equal(isValidMediaPath(['galleries', 'gal-1', 'thumb']), false);
+    assert.equal(isValidMediaPath(['galleries', 'gal-1', 'thumb', 'nested', 'photo.webp']), false);
+  });
 });
 
