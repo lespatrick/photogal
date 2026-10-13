@@ -1,16 +1,35 @@
 import crypto from 'crypto';
+import util from 'util';
 import { cookies } from 'next/headers';
 import db from './db';
 
-const AUTH_SECRET = process.env.AUTH_SECRET || 'photogal-super-secure-production-secret-key-32b';
-const SESSION_COOKIE_NAME = 'photogal_admin_session';
+const scryptAsync = util.promisify(crypto.scrypt);
 
-export function verifyPassword(password: string, storedHash: string): boolean {
+const AUTH_SECRET = process.env.AUTH_SECRET || (
+  process.env.NODE_ENV === 'production'
+    ? (() => {
+        console.warn('⚠️ WARNING: AUTH_SECRET is not set in production! Define AUTH_SECRET in your environment.');
+        return 'photogal-super-secure-production-secret-key-32b';
+      })()
+    : 'photogal-super-secure-production-secret-key-32b'
+);
+export const SESSION_COOKIE_NAME = 'photogal_admin_session';
+export const CLIENT_COOKIE_PREFIX = 'photogal_client_';
+
+export async function hashPassword(password: string, saltHex?: string): Promise<string> {
+  const salt = saltHex || crypto.randomBytes(16).toString('hex');
+  const derivedKey = (await scryptAsync(password, salt, 64)) as Buffer;
+  return `${salt}:${derivedKey.toString('hex')}`;
+}
+
+export async function verifyPassword(password: string, storedHash: string): Promise<boolean> {
   try {
     const [salt, key] = storedHash.split(':');
     if (!salt || !key) return false;
-    const derivedKey = crypto.scryptSync(password, salt, 64).toString('hex');
-    return crypto.timingSafeEqual(Buffer.from(key, 'hex'), Buffer.from(derivedKey, 'hex'));
+    const derivedKey = (await scryptAsync(password, salt, 64)) as Buffer;
+    const keyBuf = Buffer.from(key, 'hex');
+    if (keyBuf.length !== derivedKey.length) return false;
+    return crypto.timingSafeEqual(keyBuf, derivedKey);
   } catch {
     return false;
   }
@@ -32,7 +51,10 @@ export function verifyToken(token: string): string | null {
     const hmac = crypto.createHmac('sha256', AUTH_SECRET);
     hmac.update(data);
     const expectedSignature = hmac.digest('hex');
-    if (crypto.timingSafeEqual(Buffer.from(signature, 'hex'), Buffer.from(expectedSignature, 'hex'))) {
+    const sigBuf = Buffer.from(signature, 'hex');
+    const expectedSigBuf = Buffer.from(expectedSignature, 'hex');
+    if (sigBuf.length !== expectedSigBuf.length) return null;
+    if (crypto.timingSafeEqual(sigBuf, expectedSigBuf)) {
       return data;
     }
     return null;

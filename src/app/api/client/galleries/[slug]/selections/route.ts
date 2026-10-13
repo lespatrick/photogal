@@ -11,9 +11,10 @@ export async function POST(
   const token = req.headers.get('x-client-token');
 
   try {
-    const gallery = db.prepare('SELECT id, status FROM galleries WHERE slug = ?').get(slug) as {
+    const gallery = db.prepare('SELECT id, status, max_selections FROM galleries WHERE slug = ?').get(slug) as {
       id: string;
       status: string;
+      max_selections: number;
     } | undefined;
 
     if (!gallery) {
@@ -47,6 +48,15 @@ export async function POST(
 
     if (action === 'like' || (!action && !existingSelection)) {
       if (!existingSelection) {
+        const currentCount = (db.prepare('SELECT COUNT(*) as count FROM selections WHERE gallery_id = ?').get(gallery.id) as any)?.count || 0;
+        if (gallery.max_selections > 0 && currentCount >= gallery.max_selections) {
+          return NextResponse.json({
+            error: `Osiągnięto maksymalną liczbę wybranych zdjęć w pakiecie (${gallery.max_selections}). Odznacz inne zdjęcie, aby dodać nowe.`,
+            limitReached: true,
+            maxSelections: gallery.max_selections,
+          }, { status: 400 });
+        }
+
         db.prepare('INSERT INTO selections (id, gallery_id, photo_id) VALUES (?, ?, ?)').run(
           crypto.randomUUID(),
           gallery.id,

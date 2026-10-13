@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { ZipArchive } from 'archiver';
 import path from 'path';
 import fs from 'fs';
-import { PassThrough } from 'stream';
+import { PassThrough, Readable } from 'stream';
 import db from '@/lib/db';
 import { verifyClientToken } from '@/lib/auth';
 import { STORAGE_DIR } from '@/lib/storage';
@@ -46,10 +46,19 @@ export async function GET(
 
     archive.pipe(passThrough);
 
+    const nameTracker = new Map<string, number>();
     for (const p of photos) {
       const fullPath = path.resolve(STORAGE_DIR, p.original_path);
       if (fs.existsSync(fullPath)) {
-        archive.file(fullPath, { name: p.filename });
+        let entryName = p.filename;
+        const count = nameTracker.get(p.filename) || 0;
+        if (count > 0) {
+          const ext = path.extname(p.filename);
+          const base = path.basename(p.filename, ext);
+          entryName = `${base}_${count + 1}${ext}`;
+        }
+        nameTracker.set(p.filename, count + 1);
+        archive.file(fullPath, { name: entryName });
       }
     }
 
@@ -60,18 +69,9 @@ export async function GET(
     const safeTitle = gallery.title.replace(/[^a-zA-Z0-9_-]/g, '_');
     const zipName = `Wybrane_${safeTitle}.zip`;
 
-    const webStream = new ReadableStream({
-      start(controller) {
-        passThrough.on('data', (chunk) => controller.enqueue(chunk));
-        passThrough.on('end', () => controller.close());
-        passThrough.on('error', (err) => controller.error(err));
-      },
-      cancel() {
-        passThrough.destroy();
-      },
-    });
+    const webStream = Readable.toWeb(passThrough);
 
-    return new NextResponse(webStream, {
+    return new NextResponse(webStream as ReadableStream, {
       status: 200,
       headers: {
         'Content-Type': 'application/zip',

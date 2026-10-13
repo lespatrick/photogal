@@ -12,7 +12,7 @@ export function ensureGalleryStorage(galleryId: string) {
     path.resolve(base, 'preview'),
   ];
   for (const dir of dirs) {
-    if (!fs.existsSync(dir)) {
+    if (!fs.existsSync(/*turbopackIgnore: true*/ dir)) {
       fs.mkdirSync(dir, { recursive: true });
     }
   }
@@ -30,6 +30,18 @@ export function getFilePath(galleryId: string, type: 'original' | 'thumb' | 'pre
   return path.resolve(STORAGE_DIR, 'galleries', safeId, type, safeFile);
 }
 
+export function resolveSafeStoragePath(relPath: string): string | null {
+  if (!relPath || typeof relPath !== 'string') return null;
+  // Strip any leading slashes, backslashes, or relative markers
+  const cleanRel = path.normalize(relPath).replace(/^(\.\.[\/\\]|[/\\])+/, '');
+  const fullPath = path.resolve(STORAGE_DIR, cleanRel);
+  const normalizedStorage = path.resolve(STORAGE_DIR);
+  if (!fullPath.startsWith(normalizedStorage + path.sep) && fullPath !== normalizedStorage) {
+    return null;
+  }
+  return fullPath;
+}
+
 export function deleteGalleryStorage(galleryId: string) {
   const safeId = path.basename(galleryId);
   const base = path.resolve(STORAGE_DIR, 'galleries', safeId);
@@ -39,11 +51,12 @@ export function deleteGalleryStorage(galleryId: string) {
 }
 
 export function deletePhotoFiles(galleryId: string, originalPath: string, thumbPath: string, previewPath: string) {
-  const fullOriginal = path.resolve(STORAGE_DIR, path.normalize(originalPath).replace(/^(\.\.[\/\\])+/, ''));
-  const fullThumb = path.resolve(STORAGE_DIR, path.normalize(thumbPath).replace(/^(\.\.[\/\\])+/, ''));
-  const fullPreview = path.resolve(STORAGE_DIR, path.normalize(previewPath).replace(/^(\.\.[\/\\])+/, ''));
+  const fullOriginal = resolveSafeStoragePath(originalPath);
+  const fullThumb = resolveSafeStoragePath(thumbPath);
+  const fullPreview = resolveSafeStoragePath(previewPath);
 
-  if (fs.existsSync(fullOriginal)) fs.unlinkSync(fullOriginal);
-  if (fs.existsSync(fullThumb)) fs.unlinkSync(fullThumb);
-  if (fs.existsSync(fullPreview)) fs.unlinkSync(fullPreview);
+  if (fullOriginal && fs.existsSync(fullOriginal)) fs.unlinkSync(fullOriginal);
+  if (fullThumb && fs.existsSync(fullThumb)) fs.unlinkSync(fullThumb);
+  if (fullPreview && fs.existsSync(fullPreview)) fs.unlinkSync(fullPreview);
 }
+

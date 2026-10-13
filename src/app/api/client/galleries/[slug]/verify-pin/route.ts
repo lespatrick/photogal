@@ -69,9 +69,9 @@ export async function POST(
 
     // 2. Rate limiting per IP + gallery
     const clientIp = getClientIp(req);
-    const ipHash = crypto.createHash('sha256').update(clientIp).digest('hex');
+    const ipHash = crypto.createHash('sha256').update(clientIp + (process.env.AUTH_SECRET || '')).digest('hex');
 
-    // Count failed attempts in the last 15 minutes
+    // Count failed attempts in the last 15 minutes for this IP
     const recentFails = (db.prepare(`
       SELECT COUNT(*) as count FROM pin_attempts 
       WHERE gallery_id = ? AND ip_hash = ? AND success = 0 AND attempted_at > datetime('now', '-15 minutes')
@@ -107,8 +107,8 @@ export async function POST(
         WHERE gallery_id = ? AND success = 0 AND attempted_at > datetime('now', '-1 hour')
       `).get(gallery.id) as any)?.count || 0;
 
-      // If more than 10 failed attempts globally, trigger 1-hour gallery security lock
-      if (totalGalleryFails >= 10) {
+      // Emergency lockdown threshold raised to 50 to prevent trivial DoS against clients
+      if (totalGalleryFails >= 50) {
         db.prepare(`
           UPDATE galleries 
           SET pin_locked_until = datetime('now', '+1 hour') 
@@ -116,7 +116,7 @@ export async function POST(
         `).run(gallery.id);
 
         return NextResponse.json({
-          error: 'Galeria została zablokowana ze względów bezpieczeństwa z powodu wielokrotnych błędnych prób. Skontaktuj się z fotografem.',
+          error: 'Galeria została zablokowana ze względów bezpieczeństwa z powodu masowych błędnych prób. Skontaktuj się z fotografem.',
           locked: true,
         }, { status: 423 });
       }
@@ -148,12 +148,23 @@ export async function POST(
 
     const token = createClientToken(gallery.id);
 
-    return NextResponse.json({
+    const res = NextResponse.json({
       success: true,
       token,
       galleryId: gallery.id,
       slug: gallery.slug,
     });
+
+    // Set HttpOnly client cookie for seamless authenticated media streaming
+    res.cookies.set(`photogal_client_${gallery.id}`, token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 60 * 60 * 24 * 30, // 30 days
+    });
+
+    return res;
   } catch (error) {
     console.error('Verify PIN error:', error);
     return NextResponse.json({ error: 'Błąd weryfikacji' }, { status: 500 });

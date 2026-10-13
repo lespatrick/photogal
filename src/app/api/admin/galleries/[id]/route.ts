@@ -58,45 +58,43 @@ export async function PATCH(
 
   try {
     const body = await req.json();
-    const existing = db.prepare('SELECT * FROM galleries WHERE id = ?').get(id);
+    const existing = db.prepare('SELECT * FROM galleries WHERE id = ?').get(id) as Record<string, any> | undefined;
     if (!existing) {
       return NextResponse.json({ error: 'Galeria nie istnieje' }, { status: 404 });
     }
 
-    const {
-      title,
-      shoot_date,
-      welcome_text,
-      pin_code,
-      max_selections,
-      allow_zip_download,
-      status,
-      cover_photo_id,
-    } = body;
+    const newTitle = body.title !== undefined ? body.title : existing.title;
+    const newShootDate = body.shoot_date !== undefined ? body.shoot_date : existing.shoot_date;
+    const newWelcomeText = 'welcome_text' in body ? body.welcome_text : existing.welcome_text;
+    const newPin = body.pin_code !== undefined ? body.pin_code : existing.pin_code;
+    const newMaxSelections = 'max_selections' in body ? (Number(body.max_selections) || 0) : existing.max_selections;
+    const newAllowZip = 'allow_zip_download' in body ? (body.allow_zip_download ? 1 : 0) : existing.allow_zip_download;
+    const newStatus = body.status !== undefined ? body.status : existing.status;
+    const newCoverPhotoId = 'cover_photo_id' in body ? body.cover_photo_id : existing.cover_photo_id;
 
     db.prepare(`
       UPDATE galleries 
       SET 
-        title = COALESCE(?, title),
-        shoot_date = COALESCE(?, shoot_date),
-        welcome_text = COALESCE(?, welcome_text),
-        pin_code = COALESCE(?, pin_code),
-        max_selections = COALESCE(?, max_selections),
-        allow_zip_download = COALESCE(?, allow_zip_download),
-        status = COALESCE(?, status),
-        cover_photo_id = COALESCE(?, cover_photo_id),
+        title = ?,
+        shoot_date = ?,
+        welcome_text = ?,
+        pin_code = ?,
+        max_selections = ?,
+        allow_zip_download = ?,
+        status = ?,
+        cover_photo_id = ?,
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `).run(
-      title !== undefined ? title : null,
-      shoot_date !== undefined ? shoot_date : null,
-      welcome_text !== undefined ? welcome_text : null,
-      pin_code !== undefined ? pin_code : null,
-      max_selections !== undefined ? Number(max_selections) : null,
-      allow_zip_download !== undefined ? (allow_zip_download ? 1 : 0) : null,
-      status !== undefined ? status : null,
-      cover_photo_id !== undefined ? cover_photo_id : null,
-      id
+      newTitle,
+      newShootDate,
+      newWelcomeText,
+      newPin,
+      newMaxSelections,
+      newAllowZip,
+      newStatus,
+      newCoverPhotoId,
+      existing.id
     );
 
     const updated = db.prepare('SELECT * FROM galleries WHERE id = ?').get(id);

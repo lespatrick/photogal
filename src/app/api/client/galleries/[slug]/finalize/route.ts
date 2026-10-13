@@ -32,6 +32,12 @@ export async function POST(
       return NextResponse.json({ error: 'Wybierz co najmniej jedno zdjęcie przed wysłaniem.' }, { status: 400 });
     }
 
+    if (gallery.max_selections > 0 && selectedCount > gallery.max_selections) {
+      return NextResponse.json({
+        error: `Liczba wybranych zdjęć (${selectedCount}) przekracza maksymalny limit pakietu (${gallery.max_selections}).`,
+      }, { status: 400 });
+    }
+
     db.prepare(`
       UPDATE galleries 
       SET 

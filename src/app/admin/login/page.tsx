@@ -10,8 +10,8 @@ import { useToast } from '@/components/ToastProvider';
 export default function AdminLoginPage() {
   const router = useRouter();
   const { toast } = useToast();
-  const [username, setUsername] = useState('admin');
-  const [password, setPassword] = useState('admin123');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [passkeyLoading, setPasskeyLoading] = useState(false);
   const [hasPasskeys, setHasPasskeys] = useState(false);
@@ -198,17 +198,6 @@ export default function AdminLoginPage() {
           </button>
         </form>
 
-        <div
-          style={{
-            marginTop: '2rem',
-            textAlign: 'center',
-            fontSize: '0.75rem',
-            color: 'var(--text-muted)',
-            letterSpacing: '0.04em',
-          }}
-        >
-          Domyślne dane: <span style={{ color: 'var(--text-secondary)' }}>admin / admin123</span>
-        </div>
       </div>
     </div>
   );

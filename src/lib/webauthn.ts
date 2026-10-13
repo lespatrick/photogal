@@ -2,12 +2,16 @@ import crypto from 'crypto';
 import db from './db';
 
 export function getWebAuthnConfig(req: Request) {
+  const envRpId = process.env.RP_ID;
+  const envOrigin = process.env.RP_ORIGIN;
+
   const url = new URL(req.url);
-  const hostname = url.hostname;
-  // rpID is the effective domain without port
-  const rpID = hostname;
-  // origin must match browser origin including protocol and port
-  const origin = `${url.protocol}//${url.host}`;
+  const hostHeader = req.headers.get('x-forwarded-host') || req.headers.get('host') || url.host;
+  const protoHeader = req.headers.get('x-forwarded-proto') || url.protocol.replace(':', '');
+
+  const hostname = hostHeader.split(':')[0];
+  const rpID = envRpId || hostname;
+  const origin = envOrigin || `${protoHeader}://${hostHeader}`;
   const rpName = 'photogal';
 
   return { rpName, rpID, origin };

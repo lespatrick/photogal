@@ -55,7 +55,7 @@ export async function GET(
     const selections = db.prepare('SELECT photo_id FROM selections WHERE gallery_id = ?').all(gallery.id) as { photo_id: string }[];
     const selectedIds = selections.map(s => s.photo_id);
 
-    return NextResponse.json({
+    const res = NextResponse.json({
       unlocked: true,
       gallery,
       photos,
@@ -63,6 +63,18 @@ export async function GET(
       totalPhotos: photos.length,
       selectedCount: selectedIds.length,
     });
+
+    if (token) {
+      res.cookies.set(`photogal_client_${gallery.id}`, token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        path: '/',
+        maxAge: 60 * 60 * 24 * 30, // 30 days
+      });
+    }
+
+    return res;
   } catch (error) {
     console.error('Client gallery error:', error);
     return NextResponse.json({ error: 'Błąd serwera' }, { status: 500 });

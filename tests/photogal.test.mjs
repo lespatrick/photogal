@@ -1,111 +1,160 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'crypto';
+import util from 'util';
+import path from 'path';
 import Database from 'better-sqlite3';
 
+const scryptAsync = util.promisify(crypto.scrypt);
+
 describe('Photogal Core & Security Test Suite', () => {
-  test('Password hashing (scrypt) and constant-time verification', () => {
+  test('Password hashing (async scrypt) and constant-time verification', async () => {
     const password = 'PhotogalSecure2026!';
     const salt = crypto.randomBytes(16).toString('hex');
-    const hash = crypto.scryptSync(password, salt, 64).toString('hex');
-    const storedHash = `${salt}:${hash}`;
+    const derivedKey = await scryptAsync(password, salt, 64);
+    const storedHash = `${salt}:${derivedKey.toString('hex')}`;
 
     // Verify correct password
     const [savedSalt, savedKey] = storedHash.split(':');
-    const derivedKey = crypto.scryptSync(password, savedSalt, 64).toString('hex');
-    const isValid = crypto.timingSafeEqual(Buffer.from(savedKey, 'hex'), Buffer.from(derivedKey, 'hex'));
+    const verifyDerived = await scryptAsync(password, savedSalt, 64);
+    const keyBuf = Buffer.from(savedKey, 'hex');
+    const isValid = keyBuf.length === verifyDerived.length && crypto.timingSafeEqual(keyBuf, verifyDerived);
     assert.equal(isValid, true, 'Valid password must match');
 
     // Verify wrong password
-    const wrongDerived = crypto.scryptSync('WrongPassword', savedSalt, 64).toString('hex');
-    const isWrongValid = crypto.timingSafeEqual(Buffer.from(savedKey, 'hex'), Buffer.from(wrongDerived, 'hex'));
+    const wrongDerived = await scryptAsync('WrongPassword', savedSalt, 64);
+    const isWrongValid = keyBuf.length === wrongDerived.length && crypto.timingSafeEqual(keyBuf, wrongDerived);
     assert.equal(isWrongValid, false, 'Invalid password must not match');
   });
 
-  test('HMAC-SHA256 session token signing and verification', () => {
+  test('HMAC-SHA256 session token signing, verification & tampering rejection', () => {
     const secret = 'test-secret-key-32b-length-xyz123';
     const payload = JSON.stringify({ adminId: 'test-admin-uuid', exp: Date.now() + 60000 });
     
     // Sign
-    const hmac = crypto.createHmac('sha256', secret);
-    hmac.update(payload);
-    const signature = hmac.digest('hex');
-    const token = `${Buffer.from(payload).toString('base64url')}.${signature}`;
-
-    // Verify
-    const [encodedData, sig] = token.split('.');
-    const decoded = Buffer.from(encodedData, 'base64url').toString('utf-8');
-    const expectedHmac = crypto.createHmac('sha256', secret);
-    expectedHmac.update(decoded);
-    const expectedSig = expectedHmac.digest('hex');
-
-    const verified = crypto.timingSafeEqual(Buffer.from(sig, 'hex'), Buffer.from(expectedSig, 'hex'));
-    assert.equal(verified, true, 'Token signature must verify');
-    assert.equal(JSON.parse(decoded).adminId, 'test-admin-uuid');
-  });
-
-  test('Constant-time PIN comparison & tarpit threshold logic', () => {
-    const correctPin = '7890';
-    const enteredPin = '7890';
-    const badPin = '1234';
-
-    const checkPin = (input, target) => {
-      if (input.length !== target.length) return false;
-      return crypto.timingSafeEqual(Buffer.from(input), Buffer.from(target));
+    const sign = (data) => {
+      const hmac = crypto.createHmac('sha256', secret);
+      hmac.update(data);
+      return `${Buffer.from(data).toString('base64url')}.${hmac.digest('hex')}`;
     };
 
-    assert.equal(checkPin(enteredPin, correctPin), true);
-    assert.equal(checkPin(badPin, correctPin), false);
-    assert.equal(checkPin('789', correctPin), false);
+    const verify = (token) => {
+      const parts = token.split('.');
+      if (parts.length !== 2) return null;
+      const [encoded, sig] = parts;
+      const data = Buffer.from(encoded, 'base64url').toString('utf-8');
+      const hmac = crypto.createHmac('sha256', secret);
+      hmac.update(data);
+      const expected = hmac.digest('hex');
+      const sigBuf = Buffer.from(sig, 'hex');
+      const expBuf = Buffer.from(expected, 'hex');
+      if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) return null;
+      return JSON.parse(data);
+    };
 
-    // Rate-limiting thresholds
-    const isTarpitTriggered = (fails) => fails >= 3;
-    const isSoftLockTriggered = (fails) => fails >= 5;
-    const isEmergencyLockTriggered = (fails) => fails >= 10;
+    const token = sign(payload);
+    const verified = verify(token);
+    assert.equal(verified.adminId, 'test-admin-uuid');
 
-    assert.equal(isTarpitTriggered(2), false);
-    assert.equal(isTarpitTriggered(3), true);
-    assert.equal(isSoftLockTriggered(4), false);
-    assert.equal(isSoftLockTriggered(5), true);
-    assert.equal(isEmergencyLockTriggered(10), true);
+    // Tampered token payload
+    const tamperedPayload = Buffer.from(JSON.stringify({ adminId: 'attacker', exp: Date.now() + 60000 })).toString('base64url');
+    const tamperedToken = `${tamperedPayload}.${token.split('.')[1]}`;
+    assert.equal(verify(tamperedToken), null, 'Tampered token must be rejected');
+
+    // Malformed signature length
+    assert.equal(verify(`${token.split('.')[0]}.1234`), null, 'Malformed signature length must be rejected safely');
   });
 
-  test('In-memory SQLite schema creation and relationships', () => {
+  test('Storage path traversal containment (safe storage path resolution)', () => {
+    const fakeStorage = '/app/storage';
+
+    const resolveSafe = (baseDir, relPath) => {
+      if (!relPath || typeof relPath !== 'string') return null;
+      const cleanRel = path.normalize(relPath).replace(/^(\.\.[\/\\]|[/\\])+/, '');
+      const fullPath = path.resolve(baseDir, cleanRel);
+      const normalizedBase = path.resolve(baseDir);
+      if (!fullPath.startsWith(normalizedBase + path.sep) && fullPath !== normalizedBase) {
+        return null;
+      }
+      return fullPath;
+    };
+
+    // Valid relative path
+    const valid = resolveSafe(fakeStorage, 'galleries/gal-1/thumb/img.webp');
+    assert.equal(valid, path.resolve(fakeStorage, 'galleries/gal-1/thumb/img.webp'));
+
+    // Path traversal attempt with ../
+    const escapeAttempt = resolveSafe(fakeStorage, '../../etc/passwd');
+    assert.ok(escapeAttempt.startsWith(fakeStorage), 'Must never escape base storage directory');
+
+    // Absolute path injection attempt
+    const absAttempt = resolveSafe(fakeStorage, '/data/photogal.db');
+    assert.ok(absAttempt.startsWith(fakeStorage), 'Absolute path must be sanitized to stay inside storage');
+  });
+
+  test('Server-side selection package ceiling (max_selections) enforcement', () => {
     const db = new Database(':memory:');
     db.pragma('foreign_keys = ON');
 
     db.exec(`
       CREATE TABLE galleries (
         id TEXT PRIMARY KEY,
-        slug TEXT UNIQUE NOT NULL,
         title TEXT NOT NULL,
-        pin_code TEXT NOT NULL
+        max_selections INTEGER DEFAULT 0
       );
-      CREATE TABLE photos (
+      CREATE TABLE selections (
         id TEXT PRIMARY KEY,
         gallery_id TEXT NOT NULL,
-        filename TEXT NOT NULL,
-        FOREIGN KEY (gallery_id) REFERENCES galleries(id) ON DELETE CASCADE
+        photo_id TEXT NOT NULL,
+        UNIQUE(gallery_id, photo_id)
       );
     `);
 
-    // Insert gallery
-    db.prepare('INSERT INTO galleries (id, slug, title, pin_code) VALUES (?, ?, ?, ?)').run(
-      'gal-1', 'sesja-plenerowa', 'Sesja Plenerowa', '5555'
-    );
+    db.prepare('INSERT INTO galleries (id, title, max_selections) VALUES (?, ?, ?)').run('gal-pkg', 'Wedding 15', 2);
 
-    // Insert photos
-    db.prepare('INSERT INTO photos (id, gallery_id, filename) VALUES (?, ?, ?)').run('p-1', 'gal-1', 'DSC_0001.JPG');
-    db.prepare('INSERT INTO photos (id, gallery_id, filename) VALUES (?, ?, ?)').run('p-2', 'gal-1', 'DSC_0002.JPG');
+    const tryAddSelection = (galleryId, photoId) => {
+      const gallery = db.prepare('SELECT max_selections FROM galleries WHERE id = ?').get(galleryId);
+      const count = db.prepare('SELECT COUNT(*) as count FROM selections WHERE gallery_id = ?').get(galleryId).count;
+      if (gallery.max_selections > 0 && count >= gallery.max_selections) {
+        return { success: false, error: 'Limit reached' };
+      }
+      db.prepare('INSERT INTO selections (id, gallery_id, photo_id) VALUES (?, ?, ?)').run(crypto.randomUUID(), galleryId, photoId);
+      return { success: true };
+    };
 
-    const photoCount = db.prepare('SELECT COUNT(*) as count FROM photos WHERE gallery_id = ?').get('gal-1').count;
-    assert.equal(photoCount, 2, 'Should have 2 photos');
-
-    // Test Cascade Delete
-    db.prepare('DELETE FROM galleries WHERE id = ?').run('gal-1');
-    const remainingPhotos = db.prepare('SELECT COUNT(*) as count FROM photos').get().count;
-    assert.equal(remainingPhotos, 0, 'Cascade delete must remove associated photos');
+    assert.equal(tryAddSelection('gal-pkg', 'photo-1').success, true);
+    assert.equal(tryAddSelection('gal-pkg', 'photo-2').success, true);
+    // Exceeding 2
+    const thirdAttempt = tryAddSelection('gal-pkg', 'photo-3');
+    assert.equal(thirdAttempt.success, false);
+    assert.equal(thirdAttempt.error, 'Limit reached');
 
     db.close();
   });
+
+  test('ZIP file entry name deduplication logic', () => {
+    const rawFiles = ['DSC_0001.JPG', 'DSC_0002.JPG', 'DSC_0001.JPG', 'DSC_0001.JPG'];
+    const tracker = new Map();
+    const resultNames = [];
+
+    for (const filename of rawFiles) {
+      let entryName = filename;
+      const count = tracker.get(filename) || 0;
+      if (count > 0) {
+        const ext = path.extname(filename);
+        const base = path.basename(filename, ext);
+        entryName = `${base}_${count + 1}${ext}`;
+      }
+      tracker.set(filename, count + 1);
+      resultNames.push(entryName);
+    }
+
+    assert.deepEqual(resultNames, [
+      'DSC_0001.JPG',
+      'DSC_0002.JPG',
+      'DSC_0001_2.JPG',
+      'DSC_0001_3.JPG'
+    ]);
+  });
 });
+

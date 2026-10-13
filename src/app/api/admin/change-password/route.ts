@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 import db from '@/lib/db';
-import { getAdminSessionId, verifyPassword } from '@/lib/auth';
+import { getAdminSessionId, verifyPassword, hashPassword } from '@/lib/auth';
 
 export async function POST(req: NextRequest) {
   const adminId = await getAdminSessionId();
@@ -30,13 +30,12 @@ export async function POST(req: NextRequest) {
       password_hash: string;
     } | undefined;
 
-    if (!admin || !verifyPassword(currentPassword, admin.password_hash)) {
+    const isCurrentValid = admin ? await verifyPassword(currentPassword, admin.password_hash) : false;
+    if (!admin || !isCurrentValid) {
       return NextResponse.json({ error: 'Aktualne hasło jest nieprawidłowe' }, { status: 400 });
     }
 
-    const salt = crypto.randomBytes(16).toString('hex');
-    const hash = crypto.scryptSync(newPassword, salt, 64).toString('hex');
-    const passwordHash = `${salt}:${hash}`;
+    const passwordHash = await hashPassword(newPassword);
 
     db.prepare('UPDATE admins SET password_hash = ? WHERE id = ?').run(passwordHash, adminId);
 
