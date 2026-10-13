@@ -1,0 +1,25 @@
+services:
+  photogal:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ghcr.io/lespatrick/photogal:latest
+    container_name: photogal-app
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - HOSTNAME=0.0.0.0
+      - ADMIN_PASSWORD=admin123
+      - AUTH_SECRET=photogal-production-secret-change-in-production-key-32b
+    volumes:
+      - ./data:/app/data
+      - ./storage:/app/storage
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:3000/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
