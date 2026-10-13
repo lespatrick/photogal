@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 import db from '@/lib/db';
-import { getAdminSessionId, verifyPassword, hashPassword } from '@/lib/auth';
+import { getAdminSessionId, verifyPassword, hashPassword, createAdminSession } from '@/lib/auth';
 
 export async function POST(req: NextRequest) {
   const adminId = await getAdminSessionId();
@@ -37,7 +37,10 @@ export async function POST(req: NextRequest) {
 
     const passwordHash = await hashPassword(newPassword);
 
-    db.prepare('UPDATE admins SET password_hash = ? WHERE id = ?').run(passwordHash, adminId);
+    db.prepare('UPDATE admins SET password_hash = ?, token_version = token_version + 1 WHERE id = ?').run(passwordHash, adminId);
+
+    // Re-issue a fresh session cookie with the new token version
+    await createAdminSession(adminId);
 
     return NextResponse.json({ success: true, message: 'Hasło zostało pomyślnie zmienione' });
   } catch (error) {

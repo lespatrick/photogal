@@ -1,28 +1,40 @@
 import { NextRequest, NextResponse } from 'next/server';
 import db from '@/lib/db';
-import { verifyPassword, createAdminSession, destroyAdminSession, verifyAdminSession } from '@/lib/auth';
+import { verifyPassword, createAdminSession, destroyAdminSession, verifyAdminSession, getAuthSecret } from '@/lib/auth';
 
 import crypto from 'crypto';
 
 // In-memory rate limiting for admin password login (15 min window)
 const failedAttemptsMap = new Map<string, { count: number; lastAttempt: number }>();
+const MAX_MAP_ENTRIES = 10000;
+
+// Dummy hash for constant-time comparison against nonexistent users
+const DUMMY_HASH = '0123456789abcdef0123456789abcdef:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
 
 function getAdminIpHash(req: NextRequest): string {
   const forwarded = req.headers.get('x-forwarded-for');
   let ip = '127.0.0.1';
   if (forwarded) {
     const list = forwarded.split(',').map(s => s.trim()).filter(Boolean);
-    if (list.length > 0) ip = list[0];
+    if (list.length > 0) ip = list[0].replace(/[^a-fA-F0-9:.]/g, '').substring(0, 45);
   } else {
-    ip = req.headers.get('x-real-ip') || req.headers.get('cf-connecting-ip') || '127.0.0.1';
+    ip = (req.headers.get('x-real-ip') || req.headers.get('cf-connecting-ip') || '127.0.0.1').replace(/[^a-fA-F0-9:.]/g, '').substring(0, 45);
   }
-  return crypto.createHash('sha256').update(ip + (process.env.AUTH_SECRET || '')).digest('hex');
+  return crypto.createHash('sha256').update(ip + getAuthSecret()).digest('hex');
 }
 
 export async function POST(req: NextRequest) {
   try {
-    const ipHash = getAdminIpHash(req);
     const now = Date.now();
+
+    // Prune stale entries (> 15 min) to prevent unbounded memory growth
+    for (const [key, val] of failedAttemptsMap.entries()) {
+      if (now - val.lastAttempt > 15 * 60 * 1000) {
+        failedAttemptsMap.delete(key);
+      }
+    }
+
+    const ipHash = getAdminIpHash(req);
     const attempt = failedAttemptsMap.get(ipHash);
 
     if (attempt && (now - attempt.lastAttempt < 15 * 60 * 1000)) {
@@ -48,11 +60,16 @@ export async function POST(req: NextRequest) {
       password_hash: string;
     } | undefined;
 
-    const isValid = admin ? await verifyPassword(password, admin.password_hash) : false;
+    // Defeat username enumeration: run scrypt verification regardless of whether the user exists
+    const hashToVerify = admin ? admin.password_hash : DUMMY_HASH;
+    const isPasswordValid = await verifyPassword(password, hashToVerify);
+    const isValid = !!admin && isPasswordValid;
 
-    if (!admin || !isValid) {
-      const prev = failedAttemptsMap.get(ipHash) || { count: 0, lastAttempt: now };
-      failedAttemptsMap.set(ipHash, { count: prev.count + 1, lastAttempt: now });
+    if (!isValid) {
+      if (failedAttemptsMap.size < MAX_MAP_ENTRIES) {
+        const prev = failedAttemptsMap.get(ipHash) || { count: 0, lastAttempt: now };
+        failedAttemptsMap.set(ipHash, { count: prev.count + 1, lastAttempt: now });
+      }
       return NextResponse.json({ error: 'Nieprawidłowy login lub hasło.' }, { status: 401 });
     }
 

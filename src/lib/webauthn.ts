@@ -6,12 +6,14 @@ export function getWebAuthnConfig(req: Request) {
   const envOrigin = process.env.RP_ORIGIN;
 
   const url = new URL(req.url);
-  const hostHeader = req.headers.get('x-forwarded-host') || req.headers.get('host') || url.host;
-  const protoHeader = req.headers.get('x-forwarded-proto') || url.protocol.replace(':', '');
+  const rawHost = req.headers.get('x-forwarded-host') || req.headers.get('host') || url.host;
+  const safeHost = rawHost.replace(/[^a-zA-Z0-9.:_-]/g, '').trim();
+  const rawProto = req.headers.get('x-forwarded-proto') || url.protocol.replace(':', '');
+  const proto = rawProto === 'https' || (process.env.NODE_ENV === 'production') ? 'https' : 'http';
 
-  const hostname = hostHeader.split(':')[0];
+  const hostname = safeHost.split(':')[0] || 'localhost';
   const rpID = envRpId || hostname;
-  const origin = envOrigin || `${protoHeader}://${hostHeader}`;
+  const origin = envOrigin || `${proto}://${safeHost}`;
   const rpName = 'photogal';
 
   return { rpName, rpID, origin };

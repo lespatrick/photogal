@@ -3,16 +3,39 @@ import util from 'util';
 import { cookies } from 'next/headers';
 import db from './db';
 
+import { NextRequest } from 'next/server';
+
 const scryptAsync = util.promisify(crypto.scrypt);
 
-const AUTH_SECRET = process.env.AUTH_SECRET || (
-  process.env.NODE_ENV === 'production'
-    ? (() => {
-        console.warn('⚠️ WARNING: AUTH_SECRET is not set in production! Define AUTH_SECRET in your environment.');
-        return 'photogal-super-secure-production-secret-key-32b';
-      })()
-    : 'photogal-super-secure-production-secret-key-32b'
-);
+let cachedAuthSecret: string | null = null;
+
+export function getAuthSecret(): string {
+  if (cachedAuthSecret) return cachedAuthSecret;
+  if (process.env.AUTH_SECRET) {
+    cachedAuthSecret = process.env.AUTH_SECRET;
+    return cachedAuthSecret;
+  }
+
+  // Load or generate persistent random secret from settings table in SQLite
+  try {
+    const row = db.prepare('SELECT value FROM settings WHERE key = ?').get('auth_secret') as { value: string } | undefined;
+    if (row?.value) {
+      cachedAuthSecret = row.value;
+      return cachedAuthSecret;
+    }
+
+    const generated = crypto.randomBytes(32).toString('hex');
+    db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run('auth_secret', generated);
+    cachedAuthSecret = generated;
+    return cachedAuthSecret;
+  } catch {
+    // Fallback if DB is not ready during tests/bootstrap
+    const ephemeral = crypto.randomBytes(32).toString('hex');
+    cachedAuthSecret = ephemeral;
+    return ephemeral;
+  }
+}
+
 export const SESSION_COOKIE_NAME = 'photogal_admin_session';
 export const CLIENT_COOKIE_PREFIX = 'photogal_client_';
 
@@ -36,7 +59,8 @@ export async function verifyPassword(password: string, storedHash: string): Prom
 }
 
 export function signToken(data: string): string {
-  const hmac = crypto.createHmac('sha256', AUTH_SECRET);
+  const secret = getAuthSecret();
+  const hmac = crypto.createHmac('sha256', secret);
   hmac.update(data);
   const signature = hmac.digest('hex');
   return `${Buffer.from(data).toString('base64url')}.${signature}`;
@@ -48,7 +72,8 @@ export function verifyToken(token: string): string | null {
     if (parts.length !== 2) return null;
     const [encodedData, signature] = parts;
     const data = Buffer.from(encodedData, 'base64url').toString('utf-8');
-    const hmac = crypto.createHmac('sha256', AUTH_SECRET);
+    const secret = getAuthSecret();
+    const hmac = crypto.createHmac('sha256', secret);
     hmac.update(data);
     const expectedSignature = hmac.digest('hex');
     const sigBuf = Buffer.from(signature, 'hex');
@@ -65,7 +90,13 @@ export function verifyToken(token: string): string | null {
 
 export async function createAdminSession(adminId: string) {
   const cookieStore = await cookies();
-  const payload = JSON.stringify({ adminId, exp: Date.now() + 1000 * 60 * 60 * 24 * 7 }); // 7 days
+  const admin = db.prepare('SELECT id, token_version FROM admins WHERE id = ?').get(adminId) as { id: string; token_version?: number } | undefined;
+  const tokenVersion = admin?.token_version || 1;
+  const payload = JSON.stringify({
+    adminId,
+    tokenVersion,
+    exp: Date.now() + 1000 * 60 * 60 * 24 * 7, // 7 days
+  });
   const token = signToken(payload);
   cookieStore.set(SESSION_COOKIE_NAME, token, {
     httpOnly: true,
@@ -93,8 +124,13 @@ export async function getAdminSessionId(): Promise<string | null> {
   try {
     const data = JSON.parse(verified);
     if (!data.adminId || data.exp < Date.now()) return null;
-    const row = db.prepare('SELECT id FROM admins WHERE id = ?').get(data.adminId) as { id: string } | undefined;
-    return row?.id || null;
+    const row = db.prepare('SELECT id, token_version FROM admins WHERE id = ?').get(data.adminId) as { id: string; token_version?: number } | undefined;
+    if (!row) return null;
+    // Enforce token version to invalidate sessions on password reset
+    if (data.tokenVersion !== undefined && row.token_version !== undefined && data.tokenVersion !== row.token_version) {
+      return null;
+    }
+    return row.id;
   } catch {
     return null;
   }
@@ -120,4 +156,26 @@ export function verifyClientToken(token: string, expectedGalleryId: string): boo
   } catch {
     return false;
   }
+}
+
+export function extractClientToken(req: NextRequest, galleryId?: string): string | null {
+  const headerToken = req.headers.get('x-client-token');
+  if (headerToken) return headerToken;
+
+  const queryToken = req.nextUrl.searchParams.get('token');
+  if (queryToken) return queryToken;
+
+  if (galleryId) {
+    const cookieToken = req.cookies.get(`${CLIENT_COOKIE_PREFIX}${galleryId}`)?.value;
+    if (cookieToken) return cookieToken;
+  }
+
+  // Fallback: check all cookies starting with photogal_client_
+  for (const cookie of req.cookies.getAll()) {
+    if (cookie.name.startsWith(CLIENT_COOKIE_PREFIX)) {
+      return cookie.value;
+    }
+  }
+
+  return null;
 }

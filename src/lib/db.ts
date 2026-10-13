@@ -100,6 +100,11 @@ export function initDatabase() {
       FOREIGN KEY (gallery_id) REFERENCES galleries(id) ON DELETE CASCADE
     );
 
+    CREATE TABLE IF NOT EXISTS settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
+
     CREATE INDEX IF NOT EXISTS idx_galleries_slug ON galleries(slug);
     CREATE INDEX IF NOT EXISTS idx_photos_gallery ON photos(gallery_id);
     CREATE INDEX IF NOT EXISTS idx_selections_gallery ON selections(gallery_id);
@@ -108,12 +113,19 @@ export function initDatabase() {
     CREATE INDEX IF NOT EXISTS idx_pin_attempts_lookup ON pin_attempts(gallery_id, ip_hash, attempted_at);
   `);
 
-  // Safe migration for existing galleries table
+  // Safe migrations
   try {
     db.prepare('ALTER TABLE galleries ADD COLUMN pin_locked_until DATETIME').run();
-  } catch {
-    // Column already exists
-  }
+  } catch {}
+
+  try {
+    db.prepare('ALTER TABLE admins ADD COLUMN token_version INTEGER NOT NULL DEFAULT 1').run();
+  } catch {}
+
+  // Prune pin_attempts older than 7 days to prevent unbounded DB bloat
+  try {
+    db.prepare("DELETE FROM pin_attempts WHERE attempted_at < datetime('now', '-7 days')").run();
+  } catch {}
 
   // Seed default admin if none exists (username: admin, pass: admin123 or from env)
   try {
@@ -123,7 +135,7 @@ export function initDatabase() {
       const defaultPassword = process.env.ADMIN_PASSWORD || 'admin123';
       const hash = crypto.scryptSync(defaultPassword, salt, 64).toString('hex');
       const passwordHash = `${salt}:${hash}`;
-      db.prepare('INSERT OR IGNORE INTO admins (id, username, password_hash) VALUES (?, ?, ?)').run(
+      db.prepare('INSERT OR IGNORE INTO admins (id, username, password_hash, token_version) VALUES (?, ?, ?, 1)').run(
         crypto.randomUUID(),
         'admin',
         passwordHash
