@@ -52,6 +52,7 @@ export default function GalleryManagementPage({
   const [photos, setPhotos] = useState<PhotoItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number } | null>(null);
   const [filterMode, setFilterMode] = useState<'all' | 'selected'>('all');
 
   // Export modal state
@@ -139,27 +140,53 @@ export default function GalleryManagementPage({
   const handleFileUpload = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
 
+    const fileList = Array.from(files);
     setUploading(true);
-    const formData = new FormData();
-    for (let i = 0; i < files.length; i++) {
-      formData.append('files', files[i]);
-    }
+    setUploadProgress({ current: 0, total: fileList.length });
+
+    let totalUploaded = 0;
+    let failedCount = 0;
+    const CHUNK_SIZE = 2; // Chunk upload in batches of 2 to avoid memory spike and reverse-proxy 413
 
     try {
-      const res = await fetch(`/api/admin/galleries/${galleryId}/upload`, {
-        method: 'POST',
-        body: formData,
-      });
+      for (let i = 0; i < fileList.length; i += CHUNK_SIZE) {
+        const chunk = fileList.slice(i, i + CHUNK_SIZE);
+        const formData = new FormData();
+        for (const file of chunk) {
+          formData.append('files', file);
+        }
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Błąd wgrywania');
+        try {
+          const res = await fetch(`/api/admin/galleries/${galleryId}/upload`, {
+            method: 'POST',
+            body: formData,
+          });
 
-      toast(`Wgrano ${data.count} zdjęć`, 'success');
+          const data = await res.json();
+          if (res.ok) {
+            totalUploaded += data.count || chunk.length;
+          } else {
+            failedCount += chunk.length;
+          }
+        } catch {
+          failedCount += chunk.length;
+        }
+
+        setUploadProgress({ current: Math.min(i + CHUNK_SIZE, fileList.length), total: fileList.length });
+      }
+
+      if (failedCount === 0) {
+        toast(`Wgrano pomyślnie ${totalUploaded} zdjęć`, 'success');
+      } else {
+        toast(`Wgrano ${totalUploaded} zdjęć (${failedCount} z błędami)`, 'info');
+      }
+
       fetchGalleryData();
     } catch (err: any) {
       toast(err.message, 'error');
     } finally {
       setUploading(false);
+      setUploadProgress(null);
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
@@ -436,7 +463,7 @@ export default function GalleryManagementPage({
             ref={fileInputRef}
             type="file"
             multiple
-            accept="image/jpeg,image/jpg"
+            accept="image/jpeg,image/jpg,image/png,image/webp,image/heic,image/tiff"
             style={{ display: 'none' }}
             onChange={(e) => handleFileUpload(e.target.files)}
           />
@@ -445,11 +472,13 @@ export default function GalleryManagementPage({
             <Upload size={18} color="var(--text-muted)" />
             <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)' }}>
               {uploading
-                ? 'Przetwarzanie i konwersja WebP...'
-                : 'Przeciągnij zdjęcia JPG tutaj lub kliknij, aby wybrać'}
+                ? uploadProgress
+                  ? `Wgrywanie: ${uploadProgress.current} z ${uploadProgress.total} (${Math.round((uploadProgress.current / uploadProgress.total) * 100)}%)...`
+                  : 'Przetwarzanie i konwersja WebP...'
+                : 'Przeciągnij zdjęcia tutaj (JPG, PNG, WebP) lub kliknij, aby wybrać'}
             </p>
             <p className="mono-meta">
-              Automatyczna generacja miniatur WebP
+              Automatyczna generacja miniatur WebP i bezpieczny transfer
             </p>
           </div>
         </div>

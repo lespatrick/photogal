@@ -4,15 +4,14 @@ import path from 'path';
 import fs from 'fs';
 import { PassThrough, Readable } from 'stream';
 import db from '@/lib/db';
-import { verifyClientToken } from '@/lib/auth';
-import { STORAGE_DIR } from '@/lib/storage';
+import { verifyClientToken, extractClientToken } from '@/lib/auth';
+import { resolveSafeStoragePath } from '@/lib/storage';
 
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ slug: string }> }
 ) {
   const { slug } = await params;
-  const token = req.headers.get('x-client-token') || req.nextUrl.searchParams.get('token');
 
   try {
     const gallery = db.prepare('SELECT id, title, allow_zip_download, status FROM galleries WHERE slug = ?').get(slug) as any;
@@ -21,6 +20,7 @@ export async function GET(
       return new NextResponse('Galeria nie istnieje', { status: 404 });
     }
 
+    const token = extractClientToken(req, gallery.id);
     if (!token || !verifyClientToken(token, gallery.id)) {
       return new NextResponse('Brak autoryzacji', { status: 401 });
     }
@@ -41,15 +41,16 @@ export async function GET(
       return new NextResponse('Brak wybranych zdjęć do pobrania', { status: 400 });
     }
 
-    const archive = new ZipArchive({ zlib: { level: 5 } });
+    // zlib level 0 (Store mode): Photos are already compressed WebP/JPEGs. Level 0 streams instantly without high CPU load.
+    const archive = new ZipArchive({ zlib: { level: 0 } });
     const passThrough = new PassThrough();
 
     archive.pipe(passThrough);
 
     const nameTracker = new Map<string, number>();
     for (const p of photos) {
-      const fullPath = path.resolve(STORAGE_DIR, p.original_path);
-      if (fs.existsSync(fullPath)) {
+      const fullPath = resolveSafeStoragePath(p.original_path);
+      if (fullPath && fs.existsSync(fullPath)) {
         let entryName = p.filename;
         const count = nameTracker.get(p.filename) || 0;
         if (count > 0) {
@@ -66,8 +67,8 @@ export async function GET(
       console.error('Archive finalize error:', err);
     });
 
-    const safeTitle = gallery.title.replace(/[^a-zA-Z0-9_-]/g, '_');
-    const zipName = `Wybrane_${safeTitle}.zip`;
+    const asciiFallback = gallery.title.replace(/[^a-zA-Z0-9_-]/g, '_') || 'galeria';
+    const encodedTitle = encodeURIComponent(`Wybrane_${gallery.title}.zip`);
 
     const webStream = Readable.toWeb(passThrough);
 
@@ -75,7 +76,7 @@ export async function GET(
       status: 200,
       headers: {
         'Content-Type': 'application/zip',
-        'Content-Disposition': `attachment; filename="${zipName}"`,
+        'Content-Disposition': `attachment; filename="Wybrane_${asciiFallback}.zip"; filename*=UTF-8''${encodedTitle}`,
       },
     });
   } catch (error) {

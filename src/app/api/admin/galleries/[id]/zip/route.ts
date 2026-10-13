@@ -5,7 +5,7 @@ import fs from 'fs';
 import { PassThrough, Readable } from 'stream';
 import db from '@/lib/db';
 import { verifyAdminSession } from '@/lib/auth';
-import { STORAGE_DIR } from '@/lib/storage';
+import { resolveSafeStoragePath } from '@/lib/storage';
 
 export async function GET(
   req: NextRequest,
@@ -47,15 +47,16 @@ export async function GET(
       return NextResponse.json({ error: 'Brak zdjęć do spakowania' }, { status: 400 });
     }
 
-    const archive = new ZipArchive({ zlib: { level: 5 } });
+    // Level 0 Store mode for instant streaming
+    const archive = new ZipArchive({ zlib: { level: 0 } });
     const passThrough = new PassThrough();
 
     archive.pipe(passThrough);
 
     const nameTracker = new Map<string, number>();
     for (const p of photos) {
-      const fullPath = path.resolve(STORAGE_DIR, p.original_path);
-      if (fs.existsSync(fullPath)) {
+      const fullPath = resolveSafeStoragePath(p.original_path);
+      if (fullPath && fs.existsSync(fullPath)) {
         let entryName = p.filename;
         const count = nameTracker.get(p.filename) || 0;
         if (count > 0) {
@@ -72,8 +73,9 @@ export async function GET(
       console.error('Archive finalize error:', err);
     });
 
-    const safeTitle = gallery.title.replace(/[^a-zA-Z0-9_-]/g, '_');
-    const zipName = `${safeTitle}_${onlySelected ? 'wybrane' : 'wszystkie'}.zip`;
+    const mode = onlySelected ? 'wybrane' : 'wszystkie';
+    const asciiFallback = gallery.title.replace(/[^a-zA-Z0-9_-]/g, '_') || 'galeria';
+    const encodedTitle = encodeURIComponent(`${gallery.title}_${mode}.zip`);
 
     const webStream = Readable.toWeb(passThrough);
 
@@ -81,7 +83,7 @@ export async function GET(
       status: 200,
       headers: {
         'Content-Type': 'application/zip',
-        'Content-Disposition': `attachment; filename="${zipName}"`,
+        'Content-Disposition': `attachment; filename="${asciiFallback}_${mode}.zip"; filename*=UTF-8''${encodedTitle}`,
       },
     });
   } catch (error) {

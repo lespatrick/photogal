@@ -14,6 +14,8 @@ export interface ProcessedPhotoResult {
   fileSize: number;
 }
 
+const ALLOWED_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.heic', '.heif', '.tiff', '.tif', '.avif']);
+
 export async function processAndSavePhoto(
   galleryId: string,
   originalFilename: string,
@@ -21,8 +23,21 @@ export async function processAndSavePhoto(
 ): Promise<ProcessedPhotoResult> {
   const dirs = ensureGalleryStorage(galleryId);
 
+  // Validate extension
+  const ext = (path.extname(originalFilename) || '.jpg').toLowerCase();
+  if (!ALLOWED_EXTENSIONS.has(ext)) {
+    throw new Error(`Niedozwolony format pliku (${ext}). Dozwolone są pliki JPG, PNG, WebP, HEIC i TIFF.`);
+  }
+
+  // 1. Validate image format with Sharp BEFORE writing to disk
+  const imagePipeline = sharp(buffer).rotate();
+  const metadata = await imagePipeline.metadata();
+
+  if (!metadata.width || !metadata.height || !metadata.format) {
+    throw new Error('Plik nie jest prawidłowym obrazem lub jest uszkodzony.');
+  }
+
   // Generate safe unique base name
-  const ext = path.extname(originalFilename) || '.jpg';
   const rawBase = path.basename(originalFilename, ext).replace(/[^a-zA-Z0-9_-]/g, '_');
   const uniquePrefix = Date.now().toString(36) + '-' + Math.random().toString(36).substring(2, 6);
   const baseName = `${uniquePrefix}_${rawBase}`;
@@ -35,44 +50,56 @@ export async function processAndSavePhoto(
   const thumbFullPath = path.join(dirs.thumb, thumbFile);
   const previewFullPath = path.join(dirs.preview, previewFile);
 
-  // Save original buffer
-  await fs.promises.writeFile(originalFullPath, buffer);
+  const writtenFiles: string[] = [];
 
-  // Process with Sharp: rotate orientation automatically from EXIF
-  const imagePipeline = sharp(buffer).rotate();
-  const metadata = await imagePipeline.metadata();
+  try {
+    // 2. Save original buffer
+    await fs.promises.writeFile(originalFullPath, buffer);
+    writtenFiles.push(originalFullPath);
 
-  const originalWidth = metadata.width || 1920;
-  const originalHeight = metadata.height || 1080;
-  const isRotated = metadata.orientation && [5, 6, 7, 8].includes(metadata.orientation);
-  
-  // Normalized dimensions
-  const finalWidth = isRotated ? originalHeight : originalWidth;
-  const finalHeight = isRotated ? originalWidth : originalHeight;
-  const aspectRatio = +(finalWidth / finalHeight).toFixed(4);
+    const originalWidth = metadata.width;
+    const originalHeight = metadata.height;
+    const isRotated = metadata.orientation && [5, 6, 7, 8].includes(metadata.orientation);
+    
+    // Normalized dimensions
+    const finalWidth = isRotated ? originalHeight : originalWidth;
+    const finalHeight = isRotated ? originalWidth : originalHeight;
+    const aspectRatio = +(finalWidth / finalHeight).toFixed(4);
 
-  // 1. Generate WebP Thumbnail (max 600x600, fit inside)
-  await sharp(buffer)
-    .rotate()
-    .resize(600, 600, { fit: 'inside', withoutEnlargement: true })
-    .webp({ quality: 80, effort: 3 })
-    .toFile(thumbFullPath);
+    // 3. Generate High-Res WebP Preview for Lightbox (max 2200x2200)
+    const previewBuffer = await sharp(buffer)
+      .rotate()
+      .resize(2200, 2200, { fit: 'inside', withoutEnlargement: true })
+      .webp({ quality: 86, effort: 3 })
+      .toBuffer();
 
-  // 2. Generate WebP High-Res Preview for Lightbox (max 2200x2200, fit inside)
-  await sharp(buffer)
-    .rotate()
-    .resize(2200, 2200, { fit: 'inside', withoutEnlargement: true })
-    .webp({ quality: 86, effort: 3 })
-    .toFile(previewFullPath);
+    await fs.promises.writeFile(previewFullPath, previewBuffer);
+    writtenFiles.push(previewFullPath);
 
-  return {
-    filename: originalFilename,
-    originalRelativePath: `galleries/${galleryId}/original/${originalFile}`,
-    thumbRelativePath: `galleries/${galleryId}/thumb/${thumbFile}`,
-    previewRelativePath: `galleries/${galleryId}/preview/${previewFile}`,
-    width: finalWidth,
-    height: finalHeight,
-    aspectRatio,
-    fileSize: buffer.length,
-  };
+    // 4. Generate WebP Thumbnail directly from the scaled previewBuffer (saving 3x CPU decoding)
+    await sharp(previewBuffer)
+      .resize(600, 600, { fit: 'inside', withoutEnlargement: true })
+      .webp({ quality: 80, effort: 2 })
+      .toFile(thumbFullPath);
+    writtenFiles.push(thumbFullPath);
+
+    return {
+      filename: originalFilename,
+      originalRelativePath: `galleries/${galleryId}/original/${originalFile}`,
+      thumbRelativePath: `galleries/${galleryId}/thumb/${thumbFile}`,
+      previewRelativePath: `galleries/${galleryId}/preview/${previewFile}`,
+      width: finalWidth,
+      height: finalHeight,
+      aspectRatio,
+      fileSize: buffer.length,
+    };
+  } catch (error) {
+    // Clean up any files written before the error
+    for (const file of writtenFiles) {
+      try {
+        if (fs.existsSync(file)) await fs.promises.unlink(file);
+      } catch {}
+    }
+    throw error;
+  }
 }
