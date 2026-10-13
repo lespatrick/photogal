@@ -11,6 +11,7 @@
 [![WebAuthn](https://img.shields.io/badge/WebAuthn-Passkeys_FIDO2-4285F4?style=for-the-badge&logo=fido&logoColor=white)](https://webauthn.io/)
 [![PWA](https://img.shields.io/badge/PWA-Ready-5A0FC8?style=for-the-badge&logo=pwa&logoColor=white)](https://web.dev/progressive-web-apps/)
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?style=for-the-badge&logo=docker&logoColor=white)](https://www.docker.com/)
+[![LXC](https://img.shields.io/badge/LXC-Proxmox_Ready-E57000?style=for-the-badge&logo=proxmox&logoColor=white)](deploy/lxc/)
 
 [Przegląd](#-o-projekcie) •
 [Funkcje](#-kluczowe-funkcjonalności) •
@@ -138,6 +139,22 @@ docker compose logs -f
 ### Wolumeny danych:
 - `./data` — baza danych SQLite (`photogal.db`)
 - `./storage` — katalog zdjęć oryginalnych oraz wygenerowanych miniatur WebP
+
+---
+
+## 📦 Wdrożenie w kontenerze LXC (Proxmox VE / Linux Containers)
+
+Platforma **photogal** może zostać wdrożona natywnie w unprivileged kontenerze LXC (np. w Proxmox VE):
+
+```bash
+# 1. Automatyczne utworzenie kontenera z konsoli węzła Proxmox VE:
+curl -fsSL https://raw.githubusercontent.com/lespatrick/photogal/main/deploy/lxc/proxmox-lxc.sh | bash
+
+# 2. Lub instalacja wewnątrz istniejącego kontenera Debian 12 / Ubuntu 24.04:
+curl -fsSL https://raw.githubusercontent.com/lespatrick/photogal/main/deploy/lxc/install.sh | bash
+```
+
+Instrukcje podpinania udziałów sieciowych NAS / ZFS oraz pliki konfiguracyjne systemd znajdują się w folderze [`deploy/lxc/`](deploy/lxc/).
 
 ---
 

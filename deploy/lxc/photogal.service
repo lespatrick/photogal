@@ -1,0 +1,32 @@
+[Unit]
+Description=photogal - Photography Presentation & Selection Platform
+After=network.target
+
+[Service]
+Type=simple
+User=photogal
+Group=photogal
+WorkingDirectory=/opt/photogal
+Environment=NODE_ENV=production
+Environment=PORT=3000
+Environment=HOSTNAME=0.0.0.0
+Environment=AUTH_SECRET=photogal-production-secret-change-in-production-key-32b
+Environment=ADMIN_PASSWORD=admin123
+
+ExecStart=/usr/bin/node server.js
+Restart=always
+RestartSec=5
+KillSignal=SIGINT
+
+# Security sandbox
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/opt/photogal/data /opt/photogal/storage
+
+# Resource limits
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target
