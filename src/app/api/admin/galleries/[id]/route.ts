@@ -70,13 +70,24 @@ export async function PATCH(
     }
 
     const newTitle = body.title !== undefined && typeof body.title === 'string' && body.title.trim() ? body.title.trim().slice(0, 200) : existing.title;
-    const newShootDate = body.shoot_date !== undefined && typeof body.shoot_date === 'string' && body.shoot_date.trim() ? body.shoot_date.trim().slice(0, 50) : existing.shoot_date;
+    let newShootDate = existing.shoot_date;
+    if (body.shoot_date !== undefined) {
+      const trimmedDate = String(body.shoot_date).trim();
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmedDate)) {
+        return NextResponse.json({ error: 'Data sesji musi być w formacie RRRR-MM-DD' }, { status: 400 });
+      }
+      newShootDate = trimmedDate;
+    }
+
     const newWelcomeText = 'welcome_text' in body && typeof body.welcome_text === 'string' ? body.welcome_text.trim().slice(0, 3000) : existing.welcome_text;
     
     let newPin = existing.pin_code;
     let pinChanged = false;
-    if (body.pin_code !== undefined && (typeof body.pin_code === 'string' || typeof body.pin_code === 'number') && String(body.pin_code).trim()) {
-      const trimmed = String(body.pin_code).trim().slice(0, 32);
+    if (body.pin_code !== undefined) {
+      const trimmed = String(body.pin_code).trim();
+      if (!trimmed || !/^\d{4,12}$/.test(trimmed)) {
+        return NextResponse.json({ error: 'Kod PIN musi składać się wyłącznie z 4 do 12 cyfr' }, { status: 400 });
+      }
       if (trimmed !== existing.pin_code) {
         newPin = trimmed;
         pinChanged = true;
@@ -103,35 +114,37 @@ export async function PATCH(
       }
     }
 
-    db.prepare(`
-      UPDATE galleries 
-      SET 
-        title = ?,
-        shoot_date = ?,
-        welcome_text = ?,
-        pin_code = ?,
-        max_selections = ?,
-        allow_zip_download = ?,
-        status = ?,
-        cover_photo_id = ?,
-        updated_at = CURRENT_TIMESTAMP
-      WHERE id = ?
-    `).run(
-      newTitle,
-      newShootDate,
-      newWelcomeText,
-      newPin,
-      newMaxSelections,
-      newAllowZip,
-      newStatus,
-      newCoverPhotoId,
-      existing.id
-    );
+    db.transaction(() => {
+      db.prepare(`
+        UPDATE galleries 
+        SET 
+          title = ?,
+          shoot_date = ?,
+          welcome_text = ?,
+          pin_code = ?,
+          max_selections = ?,
+          allow_zip_download = ?,
+          status = ?,
+          cover_photo_id = ?,
+          updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `).run(
+        newTitle,
+        newShootDate,
+        newWelcomeText,
+        newPin,
+        newMaxSelections,
+        newAllowZip,
+        newStatus,
+        newCoverPhotoId,
+        existing.id
+      );
 
-    if (pinChanged) {
-      db.prepare('UPDATE galleries SET pin_locked_until = NULL, pin_version = pin_version + 1 WHERE id = ?').run(existing.id);
-      db.prepare('DELETE FROM pin_attempts WHERE gallery_id = ? AND success = 0').run(existing.id);
-    }
+      if (pinChanged) {
+        db.prepare('UPDATE galleries SET pin_locked_until = NULL, pin_version = pin_version + 1 WHERE id = ?').run(existing.id);
+        db.prepare('DELETE FROM pin_attempts WHERE gallery_id = ? AND success = 0').run(existing.id);
+      }
+    }).immediate();
 
     const updated = db.prepare('SELECT * FROM galleries WHERE id = ?').get(existing.id);
     return NextResponse.json({ gallery: updated });

@@ -60,6 +60,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Tytuł i data sesji są wymagane' }, { status: 400 });
     }
 
+    const trimmedDate = shoot_date.trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmedDate)) {
+      return NextResponse.json({ error: 'Data sesji musi być w formacie RRRR-MM-DD' }, { status: 400 });
+    }
+
     const id = crypto.randomUUID();
     const baseSlug = slugify(title);
     let finalSlug = baseSlug;
@@ -70,12 +75,19 @@ export async function POST(req: NextRequest) {
       finalSlug = `${baseSlug}-${counter++}`;
     }
 
-    // Default PIN: 4 random digits if not provided
-    const finalPin = pin_code && (typeof pin_code === 'string' || typeof pin_code === 'number') && String(pin_code).trim()
-      ? String(pin_code).trim().slice(0, 32)
-      : crypto.randomInt(1000, 10000).toString();
+    let finalPin = '';
+    if (pin_code !== undefined && pin_code !== null && String(pin_code).trim() !== '') {
+      const candidatePin = String(pin_code).trim();
+      if (!/^\d{4,12}$/.test(candidatePin)) {
+        return NextResponse.json({ error: 'Kod PIN musi składać się wyłącznie z 4 do 12 cyfr' }, { status: 400 });
+      }
+      finalPin = candidatePin;
+    } else {
+      finalPin = crypto.randomInt(1000, 10000).toString();
+    }
+
     const safeTitle = title.trim().slice(0, 200);
-    const safeShootDate = shoot_date.trim().slice(0, 50);
+    const safeShootDate = trimmedDate;
     const safeWelcome = welcome_text && typeof welcome_text === 'string' ? welcome_text.trim().slice(0, 3000) : '';
     const safeMaxSelections = Math.max(0, parseInt(String(max_selections), 10) || 0);
 

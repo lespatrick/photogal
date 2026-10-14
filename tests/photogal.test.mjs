@@ -165,24 +165,29 @@ describe('Photogal Core & Security Integration Test Suite', () => {
     assert.equal(fs.existsSync(galleriesRoot), true, 'Galleries root folder must never be deleted');
   });
 
-  test('extractClientIp resolves rightmost forwarded IP to defeat client spoofing', () => {
-    // Simulated request with multiple forwarded IPs
-    const fakeReqWithSpoof = {
-      headers: new Headers({
-        'x-forwarded-for': '203.0.113.195, 198.51.100.1, 192.0.2.1',
-      }),
-    };
-    const resolvedIp = extractClientIp(fakeReqWithSpoof);
-    assert.equal(resolvedIp, '192.0.2.1', 'Must resolve rightmost IP added by proxy');
+  test('extractClientIp resolves rightmost forwarded IP to defeat client spoofing when TRUST_PROXY=true', () => {
+    process.env.TRUST_PROXY = 'true';
+    try {
+      // Simulated request with multiple forwarded IPs
+      const fakeReqWithSpoof = {
+        headers: new Headers({
+          'x-forwarded-for': '203.0.113.195, 198.51.100.1, 192.0.2.1',
+        }),
+      };
+      const resolvedIp = extractClientIp(fakeReqWithSpoof);
+      assert.equal(resolvedIp, '192.0.2.1', 'Must resolve rightmost IP added by proxy');
 
-    // Simulated request with X-Real-IP
-    const fakeReqWithRealIp = {
-      headers: new Headers({
-        'x-real-ip': '198.51.100.42',
-        'x-forwarded-for': 'attacker.spoofed.ip',
-      }),
-    };
-    assert.equal(extractClientIp(fakeReqWithRealIp), '198.51.100.42', 'Must prioritize verified X-Real-IP');
+      // Simulated request with X-Real-IP
+      const fakeReqWithRealIp = {
+        headers: new Headers({
+          'x-real-ip': '198.51.100.42',
+          'x-forwarded-for': 'attacker.spoofed.ip',
+        }),
+      };
+      assert.equal(extractClientIp(fakeReqWithRealIp), '198.51.100.42', 'Must prioritize verified X-Real-IP');
+    } finally {
+      delete process.env.TRUST_PROXY;
+    }
   });
 
   test('extractClientToken strictly isolates cookie lookup when galleryId is provided', () => {
@@ -553,6 +558,93 @@ describe('Photogal Core & Security Integration Test Suite', () => {
     assert.ok(indexes.includes('idx_auth_challenges_expires'), 'auth_challenges must index expires_at');
     assert.ok(indexes.includes('idx_pin_attempts_attempted_at'), 'pin_attempts must index attempted_at');
     assert.ok(indexes.includes('idx_admin_login_attempts_attempted_at'), 'admin_login_attempts must index attempted_at');
+  });
+
+  test('Proxy CSP explicitly allows Google Fonts style-src and font-src', () => {
+    const req = new NextRequest('https://photogal.studio/admin', {
+      headers: {
+        'host': 'photogal.studio',
+        'x-forwarded-proto': 'https',
+      },
+    });
+
+    const res = proxy(req);
+    const csp = res.headers.get('Content-Security-Policy');
+    assert.ok(csp.includes('https://fonts.googleapis.com'), 'CSP must permit fonts.googleapis.com in style-src');
+    assert.ok(csp.includes('https://fonts.gstatic.com'), 'CSP must permit fonts.gstatic.com in font-src');
+  });
+
+  test('Proxy ignores untrusted x-forwarded-host when ALLOWED_HOSTS is not configured', () => {
+    delete process.env.ALLOWED_HOSTS;
+    const maliciousReq = new NextRequest('http://photogal.studio/admin/login', {
+      headers: {
+        'x-forwarded-host': 'evil-phishing.com',
+        'host': 'photogal.studio',
+        'x-forwarded-proto': 'http',
+      },
+    });
+
+    const res = proxy(maliciousReq);
+    assert.equal(res.status, 308);
+    const location = res.headers.get('location');
+    assert.ok(!location.includes('evil-phishing.com'), 'Redirect must not be poisoned by untrusted x-forwarded-host');
+    assert.ok(location.startsWith('https://photogal.studio'), 'Must redirect to safe host');
+  });
+
+  test('extractClientIp ignores proxy headers by default when TRUST_PROXY is not set', () => {
+    delete process.env.TRUST_PROXY;
+    const spoofedReq = new NextRequest('http://photogal.studio/api/test', {
+      headers: {
+        'x-real-ip': '203.0.113.195',
+        'x-forwarded-for': '198.51.100.1',
+      },
+    });
+    assert.equal(extractClientIp(spoofedReq), '127.0.0.1', 'Must ignore proxy headers by default');
+  });
+
+  test('extractClientIp ignores x-real-ip and x-forwarded-for when TRUST_PROXY=false', () => {
+    process.env.TRUST_PROXY = 'false';
+    try {
+      const spoofedReq = new NextRequest('http://photogal.studio/api/test', {
+        headers: {
+          'x-real-ip': '203.0.113.195',
+          'x-forwarded-for': '198.51.100.1',
+        },
+      });
+      assert.equal(extractClientIp(spoofedReq), '127.0.0.1', 'Must ignore proxy headers when TRUST_PROXY=false');
+    } finally {
+      delete process.env.TRUST_PROXY;
+    }
+  });
+
+  test('Proxy strips ports from ALLOWED_HOSTS and permits matching requests', () => {
+    process.env.ALLOWED_HOSTS = 'photogal.studio:8443, studio.local:3000';
+    try {
+      const req = new NextRequest('https://photogal.studio/gallery', {
+        headers: {
+          'host': 'photogal.studio:8443',
+          'x-forwarded-proto': 'https',
+        },
+      });
+      const res = proxy(req);
+      assert.equal(res.status, 200, 'Must allow request when hostname matches ALLOWED_HOSTS ignoring port');
+    } finally {
+      delete process.env.ALLOWED_HOSTS;
+    }
+  });
+
+  test('Numeric PIN validation strictly allows 4-12 digits and rejects non-numeric/out-of-range strings', () => {
+    const pinRegex = /^\d{4,12}$/;
+    assert.ok(pinRegex.test('1234'), '4 digits must be valid');
+    assert.ok(pinRegex.test('20261014'), '8 digits must be valid');
+    assert.ok(pinRegex.test('123456789012'), '12 digits must be valid');
+
+    assert.equal(pinRegex.test('123'), false, '3 digits must be rejected');
+    assert.equal(pinRegex.test('1234567890123'), false, '13 digits must be rejected');
+    assert.equal(pinRegex.test('123a'), false, 'Alphanumeric PIN must be rejected');
+    assert.equal(pinRegex.test('pin-2026'), false, 'Text PIN must be rejected');
+    assert.equal(pinRegex.test('12 34'), false, 'PIN with spaces must be rejected');
+    assert.equal(pinRegex.test(''), false, 'Empty PIN must be rejected');
   });
 });
 

@@ -28,12 +28,8 @@ export async function POST(
     }
 
     const cleanPin = (typeof pin === 'string' || typeof pin === 'number') ? String(pin).trim() : '';
-    if (!cleanPin) {
-      return NextResponse.json({ error: 'Podaj kod PIN' }, { status: 400 });
-    }
-
-    if (cleanPin.length > 32) {
-      return NextResponse.json({ error: 'Nieprawidłowy format kodu PIN' }, { status: 400 });
+    if (!cleanPin || !/^\d{4,12}$/.test(cleanPin)) {
+      return NextResponse.json({ error: 'Kod PIN musi składać się z 4 do 12 cyfr' }, { status: 400 });
     }
 
     const gallery = db.prepare(`
@@ -99,10 +95,10 @@ export async function POST(
         };
       }
 
-      // Check total gallery-wide failed attempts since last photographer reset
-      const totalGalleryFails = (db.prepare(`
+      // Check gallery-wide failed attempts in the last 1 hour
+      const recentGalleryFails = (db.prepare(`
         SELECT COUNT(*) as count FROM pin_attempts
-        WHERE gallery_id = ? AND success = 0
+        WHERE gallery_id = ? AND success = 0 AND attempted_at > datetime('now', '-1 hour')
       `).get(gallery.id) as any)?.count || 0;
 
       if (!isPinCorrect) {
@@ -112,8 +108,8 @@ export async function POST(
           VALUES (?, ?, ?, 0)
         `).run(crypto.randomUUID(), gallery.id, ipHash);
 
-        // Lock the entire gallery after 10 total failed attempts per AGENTS.md specification (requires photographer reset)
-        if (totalGalleryFails + 1 >= 10) {
+        // Lock the entire gallery after 10 total failed attempts in 1 hour (requires photographer reset)
+        if (recentGalleryFails + 1 >= 10) {
           db.prepare(`
             UPDATE galleries 
             SET pin_locked_until = '9999-12-31 23:59:59' 
@@ -144,7 +140,7 @@ export async function POST(
         };
       }
 
-      // On success: record successful attempt & clear IP failed attempts
+      // On success: record successful attempt & clear all failed attempts for this gallery
       db.prepare(`
         INSERT INTO pin_attempts (id, gallery_id, ip_hash, success)
         VALUES (?, ?, ?, 1)
@@ -152,8 +148,8 @@ export async function POST(
 
       db.prepare(`
         DELETE FROM pin_attempts 
-        WHERE gallery_id = ? AND ip_hash = ? AND success = 0
-      `).run(gallery.id, ipHash);
+        WHERE gallery_id = ? AND success = 0
+      `).run(gallery.id);
 
       return {
         status: 200,

@@ -749,9 +749,12 @@ export default function GalleryManagementPage({
                   <label className="form-label">PIN</label>
                   <input
                     type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    maxLength={12}
                     className="form-input"
                     value={editPin}
-                    onChange={(e) => setEditPin(e.target.value)}
+                    onChange={(e) => setEditPin(e.target.value.replace(/\D/g, ''))}
                     required
                   />
                 </div>

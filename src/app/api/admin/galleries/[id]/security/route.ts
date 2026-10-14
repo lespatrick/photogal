@@ -64,9 +64,11 @@ export async function POST(
       return NextResponse.json({ error: 'Galeria nie istnieje' }, { status: 404 });
     }
 
-    // Unlock gallery and clear failed attempts
-    db.prepare('UPDATE galleries SET pin_locked_until = NULL WHERE id = ?').run(gallery.id);
-    db.prepare('DELETE FROM pin_attempts WHERE gallery_id = ? AND success = 0').run(gallery.id);
+    // Unlock gallery and clear failed attempts atomically
+    db.transaction(() => {
+      db.prepare('UPDATE galleries SET pin_locked_until = NULL WHERE id = ?').run(gallery.id);
+      db.prepare('DELETE FROM pin_attempts WHERE gallery_id = ? AND success = 0').run(gallery.id);
+    }).immediate();
 
     return NextResponse.json({
       success: true,

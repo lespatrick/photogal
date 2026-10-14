@@ -53,10 +53,11 @@ self.addEventListener('fetch', (event) => {
         .then((networkResponse) => {
           if (networkResponse && networkResponse.status === 200) {
             const responseClone = networkResponse.clone();
-            caches.open(MEDIA_CACHE_NAME).then(async (cache) => {
+            const cacheOperation = caches.open(MEDIA_CACHE_NAME).then(async (cache) => {
               await cache.put(event.request, responseClone);
-              pruneMediaCache(cache);
+              await pruneMediaCache(cache);
             });
+            event.waitUntil(cacheOperation);
           }
           return networkResponse;
         })
@@ -89,6 +90,14 @@ self.addEventListener('fetch', (event) => {
           headers: { 'Content-Type': 'text/plain; charset=utf-8' },
         });
       })
+    );
+  }
+});
+
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'CLEAR_MEDIA_CACHE') {
+    event.waitUntil(
+      caches.delete(MEDIA_CACHE_NAME)
     );
   }
 });

@@ -12,21 +12,26 @@ export function proxy(req: NextRequest) {
   }
 
   const url = req.nextUrl.clone();
-  const rawHost = req.headers.get('x-forwarded-host') || req.headers.get('host') || url.host;
   const forwardedProto = req.headers.get('x-forwarded-proto');
 
   // Check if connection is plaintext HTTP
   const isHttp = forwardedProto === 'http' || (!forwardedProto && url.protocol === 'http:');
-  
-  // Extract and validate hostname to defeat Host Header Injection and Open Redirects
+
+  const allowedHosts = [
+    ...(process.env.ALLOWED_HOSTS ? process.env.ALLOWED_HOSTS.split(',').map((h) => h.split(':')[0].trim().toLowerCase()) : []),
+    ...(process.env.RP_ID ? [process.env.RP_ID.split(':')[0].trim().toLowerCase()] : []),
+  ].filter(Boolean);
+
+  // Extract and validate hostname to defeat Host Header Injection and Open Redirects.
+  // x-forwarded-host is only trusted if allowedHosts is explicitly configured and includes it.
+  const rawForwardedHost = req.headers.get('x-forwarded-host');
+  const forwardedHostCandidate = rawForwardedHost ? rawForwardedHost.split(':')[0].trim().toLowerCase() : null;
+  const isTrustedForwardedHost = forwardedHostCandidate && allowedHosts.includes(forwardedHostCandidate);
+
+  const rawHost = (isTrustedForwardedHost ? rawForwardedHost : (req.headers.get('host') || url.host)) || 'localhost';
   const hostWithoutPort = rawHost.split(':')[0].trim().toLowerCase();
   const isValidHostname = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$/.test(hostWithoutPort);
   let hostname = isValidHostname ? hostWithoutPort : url.hostname.toLowerCase();
-
-  const allowedHosts = [
-    ...(process.env.ALLOWED_HOSTS ? process.env.ALLOWED_HOSTS.split(',').map((h) => h.trim().toLowerCase()) : []),
-    ...(process.env.RP_ID ? [process.env.RP_ID.trim().toLowerCase()] : []),
-  ].filter(Boolean);
 
   const isLoopback = hostname === 'localhost' || hostname === '127.0.0.1';
   // Internal health check exemption (e.g. Docker container wget http://127.0.0.1:3000/ or local dev)
@@ -67,7 +72,7 @@ export function proxy(req: NextRequest) {
   response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
   response.headers.set(
     'Content-Security-Policy',
-    "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; frame-ancestors 'none';"
+    "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; frame-ancestors 'none';"
   );
   response.headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
 

@@ -33,12 +33,13 @@ export async function GET(
     const content = filenames.join(separator === 'newline' ? '\n' : separator === 'space' ? ' ' : ', ');
 
     if (download) {
-      const safeTitle = gallery.title.replace(/[^a-zA-Z0-9_-]/g, '_');
+      const asciiFallback = gallery.title.replace(/[^a-zA-Z0-9_-]/g, '_') || 'galeria';
+      const encodedTitle = encodeURIComponent(`selekcja_${gallery.title}.txt`);
       return new NextResponse(content, {
         status: 200,
         headers: {
           'Content-Type': 'text/plain; charset=utf-8',
-          'Content-Disposition': `attachment; filename="selekcja_${safeTitle}.txt"`,
+          'Content-Disposition': `attachment; filename="selekcja_${asciiFallback}.txt"; filename*=UTF-8''${encodedTitle}`,
         },
       });
     }

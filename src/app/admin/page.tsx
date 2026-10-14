@@ -104,8 +104,8 @@ export default function AdminDashboardPage() {
       toast('Nowe hasła nie są identyczne', 'error');
       return;
     }
-    if (newPassword.length < 6) {
-      toast('Nowe hasło musi mieć co najmniej 6 znaków', 'error');
+    if (newPassword.length < 10) {
+      toast('Nowe hasło musi mieć co najmniej 10 znaków', 'error');
       return;
     }
 
@@ -581,10 +581,12 @@ export default function AdminDashboardPage() {
                   </label>
                   <input
                     type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
                     className="form-input"
                     value={formPin}
-                    onChange={(e) => setFormPin(e.target.value)}
-                    maxLength={8}
+                    onChange={(e) => setFormPin(e.target.value.replace(/\D/g, ''))}
+                    maxLength={12}
                     required
                   />
                 </div>

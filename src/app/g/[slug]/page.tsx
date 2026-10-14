@@ -184,9 +184,12 @@ export default function ClientGalleryPage({
 
       const data = await parseJsonResponse(res);
       if (!res.ok) {
-        if (res.status === 401) {
+        if (res.status === 401 || res.status === 423) {
           setUnlocked(false);
-          toast('Wymagane ponowne wprowadzenie kodu PIN', 'info');
+          if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+            navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_MEDIA_CACHE' });
+          }
+          toast(data.error || 'Wymagane ponowne wprowadzenie kodu PIN', 'info');
           return;
         }
         // Rollback this toggle
@@ -199,8 +202,16 @@ export default function ClientGalleryPage({
         throw new Error(data.error || 'Błąd zapisu wyboru');
       }
 
-      if (Array.isArray(data.selectedIds)) {
-        setSelectedIds(new Set(data.selectedIds));
+      if (data.isSelected !== undefined) {
+        setSelectedIds((prev) => {
+          const next = new Set(prev);
+          if (data.isSelected) {
+            next.add(photoId);
+          } else {
+            next.delete(photoId);
+          }
+          return next;
+        });
       }
     } catch (err: any) {
       toast(err.message, 'error');
@@ -305,8 +316,11 @@ export default function ClientGalleryPage({
 
       const data = await parseJsonResponse(res);
       if (!res.ok) {
-        if (res.status === 401) {
+        if (res.status === 401 || res.status === 423) {
           setUnlocked(false);
+          if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+            navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_MEDIA_CACHE' });
+          }
           toast('Wymagane ponowne wprowadzenie kodu PIN', 'info');
           return;
         }
@@ -355,10 +369,11 @@ export default function ClientGalleryPage({
               <input
                 type="password"
                 inputMode="numeric"
+                pattern="[0-9]*"
                 autoFocus
-                maxLength={8}
+                maxLength={12}
                 value={pinInput}
-                onChange={(e) => setPinInput(e.target.value)}
+                onChange={(e) => setPinInput(e.target.value.replace(/\D/g, ''))}
                 placeholder="• • • •"
                 className="form-input"
                 style={{

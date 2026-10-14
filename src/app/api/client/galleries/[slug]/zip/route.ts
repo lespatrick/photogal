@@ -7,6 +7,8 @@ import db from '@/lib/db';
 import { verifyClientToken, extractClientToken } from '@/lib/auth';
 import { resolveSafeStoragePath } from '@/lib/storage';
 
+const zipRateLimitMap = new Map<string, { count: number; resetAt: number }>();
+
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ slug: string }> }
@@ -23,6 +25,24 @@ export async function GET(
     const token = extractClientToken(req, gallery.id);
     if (!token || !verifyClientToken(token, gallery.id, gallery.pin_version)) {
       return new NextResponse('Brak autoryzacji', { status: 401 });
+    }
+
+    // Rate limit: max 5 zip generations per 5 minutes per gallery session
+    const rlKey = `${gallery.id}:${token.slice(-16)}`;
+    const now = Date.now();
+    const rl = zipRateLimitMap.get(rlKey);
+    if (rl && rl.resetAt > now) {
+      if (rl.count >= 5) {
+        return new NextResponse('Zbyt wiele zapytań o archiwum ZIP. Spróbuj ponownie za 5 minut.', { status: 429 });
+      }
+      rl.count++;
+    } else {
+      if (zipRateLimitMap.size > 1000) {
+        for (const [k, v] of zipRateLimitMap.entries()) {
+          if (v.resetAt <= now) zipRateLimitMap.delete(k);
+        }
+      }
+      zipRateLimitMap.set(rlKey, { count: 1, resetAt: now + 5 * 60 * 1000 });
     }
 
     if (!gallery.allow_zip_download || gallery.status !== 'submitted') {

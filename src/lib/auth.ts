@@ -126,7 +126,9 @@ export async function getAdminSessionId(): Promise<string | null> {
     const row = db.prepare('SELECT id, token_version FROM admins WHERE id = ?').get(data.adminId) as { id: string; token_version?: number } | undefined;
     if (!row) return null;
     // Enforce token version to invalidate sessions on password reset
-    if (data.tokenVersion !== undefined && row.token_version !== undefined && data.tokenVersion !== row.token_version) {
+    const tokenVersion = data.tokenVersion ?? 1;
+    const adminVersion = row.token_version ?? 1;
+    if (tokenVersion !== adminVersion) {
       return null;
     }
     return row.id;
@@ -178,20 +180,29 @@ export function extractClientIp(req: NextRequest): string {
     }
   }
 
-  // Prioritize verified X-Real-IP set by reverse proxy (e.g. Nginx proxy_set_header X-Real-IP $remote_addr)
-  const realIp = req.headers.get('x-real-ip');
-  if (realIp) {
-    const clean = realIp.trim().replace(/[^a-fA-F0-9:.]/g, '').substring(0, 45);
-    if (clean) return clean;
+  // Only trust reverse proxy headers if TRUST_PROXY is explicitly enabled
+  if (process.env.TRUST_PROXY === 'true') {
+    // Prioritize verified X-Real-IP set by reverse proxy (e.g. Nginx proxy_set_header X-Real-IP $remote_addr)
+    const realIp = req.headers.get('x-real-ip');
+    if (realIp) {
+      const clean = realIp.trim().replace(/[^a-fA-F0-9:.]/g, '').substring(0, 45);
+      if (clean) return clean;
+    }
+
+    // Fallback: use the rightmost IP appended by the trusted reverse proxy to defeat client spoofing
+    const forwarded = req.headers.get('x-forwarded-for');
+    if (forwarded) {
+      const list = forwarded.split(',').map((s) => s.trim().replace(/[^a-fA-F0-9:.]/g, '')).filter(Boolean);
+      if (list.length > 0) {
+        return list[list.length - 1].substring(0, 45);
+      }
+    }
   }
 
-  // Fallback: use the rightmost IP appended by the trusted reverse proxy to defeat client spoofing
-  const forwarded = req.headers.get('x-forwarded-for');
-  if (forwarded) {
-    const list = forwarded.split(',').map((s) => s.trim().replace(/[^a-fA-F0-9:.]/g, '')).filter(Boolean);
-    if (list.length > 0) {
-      return list[list.length - 1].substring(0, 45);
-    }
+  const directIp = (req as any).ip;
+  if (directIp) {
+    const clean = String(directIp).trim().replace(/[^a-fA-F0-9:.]/g, '').substring(0, 45);
+    if (clean) return clean;
   }
 
   return '127.0.0.1';

@@ -128,7 +128,7 @@ export async function GET(
       'Content-Type': contentType,
       'ETag': etag,
       'Last-Modified': stat.mtime.toUTCString(),
-      'Cache-Control': 'private, max-age=86400',
+      'Cache-Control': 'private, no-cache, must-revalidate',
       'X-Content-Type-Options': 'nosniff',
       'Accept-Ranges': 'bytes',
     };

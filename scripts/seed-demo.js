@@ -31,6 +31,7 @@ function initSchema() {
       shoot_date TEXT NOT NULL,
       welcome_text TEXT,
       pin_code TEXT NOT NULL,
+      pin_version INTEGER NOT NULL DEFAULT 1,
       max_selections INTEGER DEFAULT 0,
       allow_zip_download INTEGER DEFAULT 0,
       status TEXT DEFAULT 'active',
@@ -98,6 +99,29 @@ function initSchema() {
       attempted_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (gallery_id) REFERENCES galleries(id) ON DELETE CASCADE
     );
+
+    CREATE TABLE IF NOT EXISTS settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS admin_login_attempts (
+      id TEXT PRIMARY KEY,
+      ip_hash TEXT NOT NULL,
+      attempted_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_galleries_slug ON galleries(slug);
+    CREATE INDEX IF NOT EXISTS idx_photos_gallery ON photos(gallery_id);
+    CREATE INDEX IF NOT EXISTS idx_selections_gallery ON selections(gallery_id);
+    CREATE INDEX IF NOT EXISTS idx_selections_photo ON selections(photo_id);
+    CREATE INDEX IF NOT EXISTS idx_authenticators_admin ON authenticators(admin_id);
+    CREATE INDEX IF NOT EXISTS idx_pin_attempts_lookup ON pin_attempts(gallery_id, ip_hash, attempted_at);
+    CREATE INDEX IF NOT EXISTS idx_pin_attempts_attempted_at ON pin_attempts(attempted_at);
+    CREATE INDEX IF NOT EXISTS idx_auth_challenges_lookup ON auth_challenges(challenge, user_type);
+    CREATE INDEX IF NOT EXISTS idx_auth_challenges_expires ON auth_challenges(expires_at);
+    CREATE INDEX IF NOT EXISTS idx_admin_login_attempts ON admin_login_attempts(ip_hash, attempted_at);
+    CREATE INDEX IF NOT EXISTS idx_admin_login_attempts_attempted_at ON admin_login_attempts(attempted_at);
   `);
 
   // Default admin
