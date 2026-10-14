@@ -1,18 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
-import db from '@/lib/db';
-import { createClientToken, getAuthSecret } from '@/lib/auth';
-
-function getClientIp(req: NextRequest): string {
-  const forwarded = req.headers.get('x-forwarded-for');
-  if (forwarded) {
-    const list = forwarded.split(',').map(s => s.trim()).filter(Boolean);
-    if (list.length > 0) return list[0].replace(/[^a-fA-F0-9:.]/g, '').substring(0, 45);
-  }
-  const realIp = req.headers.get('x-real-ip') || req.headers.get('cf-connecting-ip');
-  if (realIp) return realIp.trim().replace(/[^a-fA-F0-9:.]/g, '').substring(0, 45);
-  return '127.0.0.1';
-}
+import db, { parseSqliteDate } from '@/lib/db';
+import { createClientToken, getAuthSecret, extractClientIp } from '@/lib/auth';
 
 function secureComparePins(a: string, b: string): boolean {
   const strA = (a || '').trim();
@@ -33,14 +22,20 @@ export async function POST(
   const { slug } = await params;
 
   try {
-    const { pin } = await req.json();
+    let pin: string | undefined;
+    try {
+      const body = await req.json();
+      pin = body?.pin;
+    } catch {
+      return NextResponse.json({ error: 'Nieprawidłowe dane żądania' }, { status: 400 });
+    }
 
     if (!pin) {
       return NextResponse.json({ error: 'Podaj kod PIN' }, { status: 400 });
     }
 
     const gallery = db.prepare(`
-      SELECT id, slug, pin_code, title, pin_locked_until 
+      SELECT id, slug, pin_code, title, pin_locked_until, status 
       FROM galleries 
       WHERE slug = ?
     `).get(slug) as {
@@ -49,103 +44,126 @@ export async function POST(
       pin_code: string;
       title: string;
       pin_locked_until: string | null;
+      status: string;
     } | undefined;
 
-    if (!gallery) {
+    if (!gallery || gallery.status === 'draft') {
       return NextResponse.json({ error: 'Galeria nie została odnaleziona' }, { status: 404 });
     }
 
-    // 1. Check if gallery is locked by photographer or system hard lockout
-    if (gallery.pin_locked_until) {
-      const lockExpiry = new Date(gallery.pin_locked_until).getTime();
-      if (lockExpiry > Date.now()) {
-        const remainingMinutes = Math.ceil((lockExpiry - Date.now()) / (1000 * 60));
-        return NextResponse.json({
-          error: `Galeria została zablokowana ze względów bezpieczeństwa po wielokrotnych błędnych próbach wprowadzenia PIN. Spróbuj ponownie za ${remainingMinutes} min lub skontaktuj się z fotografem.`,
-          locked: true,
-          retryAfter: remainingMinutes * 60,
-        }, { status: 423 });
-      }
-    }
-
-    // 2. Rate limiting per IP + gallery
-    const clientIp = getClientIp(req);
+    // 1. Rate limiting & PIN verification inside atomic immediate transaction
+    const clientIp = extractClientIp(req);
     const ipHash = crypto.createHash('sha256').update(clientIp + getAuthSecret()).digest('hex');
+    const isPinCorrect = secureComparePins(pin.toString(), gallery.pin_code);
 
-    // Count failed attempts in the last 15 minutes for this IP
-    const recentFails = (db.prepare(`
-      SELECT COUNT(*) as count FROM pin_attempts 
-      WHERE gallery_id = ? AND ip_hash = ? AND success = 0 AND attempted_at > datetime('now', '-15 minutes')
-    `).get(gallery.id, ipHash) as any)?.count || 0;
+    const txResult = db.transaction(() => {
+      // Re-check if gallery is locked by photographer or system hard lockout
+      const fresh = db.prepare('SELECT pin_locked_until FROM galleries WHERE id = ?').get(gallery.id) as { pin_locked_until: string | null } | undefined;
+      if (fresh?.pin_locked_until) {
+        const lockExpiry = parseSqliteDate(fresh.pin_locked_until).getTime();
+        if (lockExpiry > Date.now()) {
+          const remainingMinutes = Math.max(1, Math.ceil((lockExpiry - Date.now()) / (1000 * 60)));
+          return {
+            status: 423,
+            error: remainingMinutes > 1000
+              ? 'Galeria została zablokowana ze względów bezpieczeństwa po wielokrotnych błędnych próbach wprowadzenia PIN. Skontaktuj się z fotografem w celu odblokowania.'
+              : `Galeria została zablokowana ze względów bezpieczeństwa po wielokrotnych błędnych próbach wprowadzenia PIN. Spróbuj ponownie za ${remainingMinutes} min lub skontaktuj się z fotografem.`,
+            locked: true,
+          };
+        }
+      }
 
-    // Lockout IP after 5 failed attempts in 15 minutes
-    if (recentFails >= 5) {
-      return NextResponse.json({
-        error: 'Zbyt wiele nieudanych prób wprowadzenia kodu PIN. Dostęp z tego adresu został zablokowany na 15 minut.',
-        locked: true,
-        retryAfter: 900,
-      }, { status: 429 });
-    }
+      // Count failed attempts in the last 15 minutes for this IP
+      const recentFails = (db.prepare(`
+        SELECT COUNT(*) as count FROM pin_attempts 
+        WHERE gallery_id = ? AND ip_hash = ? AND success = 0 AND attempted_at > datetime('now', '-15 minutes')
+      `).get(gallery.id, ipHash) as any)?.count || 0;
 
-    // Check gallery-wide failed attempts in the last 15 minutes
-    const totalGalleryFails = (db.prepare(`
-      SELECT COUNT(*) as count FROM pin_attempts
-      WHERE gallery_id = ? AND success = 0 AND attempted_at > datetime('now', '-15 minutes')
-    `).get(gallery.id) as any)?.count || 0;
+      // Lockout IP after 5 failed attempts in 15 minutes
+      if (recentFails >= 5) {
+        return {
+          status: 429,
+          error: 'Zbyt wiele nieudanych prób wprowadzenia kodu PIN. Dostęp z tego adresu został zablokowany na 15 minut.',
+          locked: true,
+          retryAfter: 900,
+        };
+      }
 
-    // 3. Progressive backoff delay (tarpit) after 3 failed attempts from this IP OR if gallery is under general brute force
-    if (recentFails >= 3 || totalGalleryFails >= 20) {
+      // Check gallery-wide failed attempts in the last 15 minutes
+      const totalGalleryFails = (db.prepare(`
+        SELECT COUNT(*) as count FROM pin_attempts
+        WHERE gallery_id = ? AND success = 0 AND attempted_at > datetime('now', '-15 minutes')
+      `).get(gallery.id) as any)?.count || 0;
+
+      if (!isPinCorrect) {
+        // Record failed attempt
+        db.prepare(`
+          INSERT INTO pin_attempts (id, gallery_id, ip_hash, success)
+          VALUES (?, ?, ?, 0)
+        `).run(crypto.randomUUID(), gallery.id, ipHash);
+
+        // Lock the entire gallery after 10 total failed attempts per AGENTS.md specification (requires photographer reset)
+        if (totalGalleryFails + 1 >= 10) {
+          db.prepare(`
+            UPDATE galleries 
+            SET pin_locked_until = '9999-12-31 23:59:59' 
+            WHERE id = ?
+          `).run(gallery.id);
+
+          return {
+            status: 423,
+            error: 'Galeria została zablokowana ze względów bezpieczeństwa po wielokrotnych błędnych próbach wprowadzenia PIN. Skontaktuj się z fotografem w celu odblokowania.',
+            locked: true,
+            applyTarpit: true,
+          };
+        }
+
+        const remainingAttempts = Math.max(0, 5 - (recentFails + 1));
+        let message = 'Nieprawidłowy kod PIN.';
+        if (remainingAttempts > 0) {
+          message += ` Pozostało prób przed blokadą: ${remainingAttempts}.`;
+        } else {
+          message += ' Kolejna próba zablokuje dostęp na 15 minut.';
+        }
+
+        return {
+          status: 401,
+          error: message,
+          remainingAttempts,
+          applyTarpit: recentFails + 1 >= 3,
+        };
+      }
+
+      // On success: record successful attempt & clear IP failed attempts
+      db.prepare(`
+        INSERT INTO pin_attempts (id, gallery_id, ip_hash, success)
+        VALUES (?, ?, ?, 1)
+      `).run(crypto.randomUUID(), gallery.id, ipHash);
+
+      db.prepare(`
+        DELETE FROM pin_attempts 
+        WHERE gallery_id = ? AND ip_hash = ? AND success = 0
+      `).run(gallery.id, ipHash);
+
+      return {
+        status: 200,
+        applyTarpit: recentFails >= 3,
+      };
+    }).immediate();
+
+    // 2. Progressive backoff delay (tarpit) if triggered
+    if (txResult.applyTarpit) {
       await new Promise((resolve) => setTimeout(resolve, 2500));
     }
 
-    // 4. Constant-time secure comparison
-    const isPinCorrect = secureComparePins(pin.toString(), gallery.pin_code);
-
-    if (!isPinCorrect) {
-      // Record failed attempt
-      db.prepare(`
-        INSERT INTO pin_attempts (id, gallery_id, ip_hash, success)
-        VALUES (?, ?, ?, 0)
-      `).run(crypto.randomUUID(), gallery.id, ipHash);
-
-      // Only lock the entire gallery if there is an extreme distributed flood (>150 failed attempts in 15 min)
-      if (totalGalleryFails >= 150) {
-        db.prepare(`
-          UPDATE galleries 
-          SET pin_locked_until = datetime('now', '+30 minutes') 
-          WHERE id = ?
-        `).run(gallery.id);
-
-        return NextResponse.json({
-          error: 'Galeria została zablokowana ze względów bezpieczeństwa z powodu masowych błędnych prób. Skontaktuj się z fotografem.',
-          locked: true,
-        }, { status: 423 });
-      }
-
-      const remainingAttempts = Math.max(0, 5 - (recentFails + 1));
-      let message = 'Nieprawidłowy kod PIN.';
-      if (remainingAttempts > 0) {
-        message += ` Pozostało prób przed blokadą: ${remainingAttempts}.`;
-      } else {
-        message += ' Kolejna próba zablokuje dostęp na 15 minut.';
-      }
-
+    if (txResult.status !== 200) {
       return NextResponse.json({
-        error: message,
-        remainingAttempts,
-      }, { status: 401 });
+        error: txResult.error,
+        locked: txResult.locked,
+        remainingAttempts: txResult.remainingAttempts,
+        retryAfter: txResult.retryAfter,
+      }, { status: txResult.status });
     }
-
-    // 5. On success: record successful attempt & clear IP failed attempts
-    db.prepare(`
-      INSERT INTO pin_attempts (id, gallery_id, ip_hash, success)
-      VALUES (?, ?, ?, 1)
-    `).run(crypto.randomUUID(), gallery.id, ipHash);
-
-    db.prepare(`
-      DELETE FROM pin_attempts 
-      WHERE gallery_id = ? AND ip_hash = ? AND success = 0
-    `).run(gallery.id, ipHash);
 
     const token = createClientToken(gallery.id);
 

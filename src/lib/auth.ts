@@ -158,6 +158,25 @@ export function verifyClientToken(token: string, expectedGalleryId: string): boo
   }
 }
 
+export function extractClientIp(req: NextRequest): string {
+  const realIp = req.headers.get('x-real-ip') || req.headers.get('cf-connecting-ip');
+  if (realIp) {
+    const clean = realIp.trim().replace(/[^a-fA-F0-9:.]/g, '').substring(0, 45);
+    if (clean) return clean;
+  }
+
+  const forwarded = req.headers.get('x-forwarded-for');
+  if (forwarded) {
+    const list = forwarded.split(',').map((s) => s.trim().replace(/[^a-fA-F0-9:.]/g, '')).filter(Boolean);
+    // Use the rightmost IP appended by the trusted reverse proxy to defeat client spoofing
+    if (list.length > 0) {
+      return list[list.length - 1].substring(0, 45);
+    }
+  }
+
+  return '127.0.0.1';
+}
+
 export function extractClientToken(req: NextRequest, galleryId?: string): string | null {
   const headerToken = req.headers.get('x-client-token');
   if (headerToken) return headerToken;
@@ -167,10 +186,10 @@ export function extractClientToken(req: NextRequest, galleryId?: string): string
 
   if (galleryId) {
     const cookieToken = req.cookies.get(`${CLIENT_COOKIE_PREFIX}${galleryId}`)?.value;
-    if (cookieToken) return cookieToken;
+    return cookieToken || null;
   }
 
-  // Fallback: check all cookies starting with photogal_client_
+  // Fallback: check all cookies starting with photogal_client_ only when galleryId is omitted
   for (const cookie of req.cookies.getAll()) {
     if (cookie.name.startsWith(CLIENT_COOKIE_PREFIX)) {
       return cookie.value;

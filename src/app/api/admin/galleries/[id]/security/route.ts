@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import db from '@/lib/db';
+import db, { parseSqliteDate } from '@/lib/db';
 import { verifyAdminSession } from '@/lib/auth';
 
 export async function GET(
@@ -24,7 +24,7 @@ export async function GET(
     `).get(gallery.id) as any)?.count || 0;
 
     const isLocked = gallery.pin_locked_until
-      ? new Date(gallery.pin_locked_until).getTime() > Date.now()
+      ? parseSqliteDate(gallery.pin_locked_until).getTime() > Date.now()
       : false;
 
     const recentLogs = db.prepare(`
