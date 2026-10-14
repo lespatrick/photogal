@@ -96,6 +96,10 @@ export async function GET(
       if (!archive.destroyed) archive.destroy();
       if (!passThrough.destroyed) passThrough.destroy();
     });
+    if (req.signal?.aborted) {
+      if (!archive.destroyed) archive.destroy();
+      if (!passThrough.destroyed) passThrough.destroy();
+    }
 
     archive.pipe(passThrough);
 

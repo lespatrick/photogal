@@ -207,6 +207,9 @@ export async function GET(
         req.signal?.addEventListener('abort', () => {
           if (!rangeStream.destroyed) rangeStream.destroy();
         });
+        if (req.signal?.aborted) {
+          rangeStream.destroy();
+        }
 
         headers['Content-Range'] = `bytes ${start}-${chunkEnd}/${fileSize}`;
         headers['Content-Length'] = chunkSize.toString();
@@ -226,6 +229,9 @@ export async function GET(
     req.signal?.addEventListener('abort', () => {
       if (!fileStream.destroyed) fileStream.destroy();
     });
+    if (req.signal?.aborted) {
+      fileStream.destroy();
+    }
 
     return new NextResponse(Readable.toWeb(fileStream) as ReadableStream, {
       status: 200,

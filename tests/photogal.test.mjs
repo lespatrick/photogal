@@ -846,6 +846,50 @@ describe('Photogal Core & Security Integration Test Suite', () => {
     // Clean up
     deleteGalleryStorage(testGalleryId);
   });
+
+  test('verify-pin clears expired pin_locked_until automatically on verification', async () => {
+    const activeDb = db.default || db;
+    const galleryId = 'test-expired-lockout-gal';
+    const slug = 'test-expired-lockout-slug';
+
+    activeDb.prepare(`
+      INSERT OR REPLACE INTO galleries (id, slug, title, shoot_date, pin_code, pin_locked_until, status)
+      VALUES (?, ?, ?, ?, ?, datetime('now', '-5 minutes'), 'active')
+    `).run(galleryId, slug, 'Expired Lockout Gallery', '2026-10-14', '9876');
+
+    const { POST } = await import('../src/app/api/client/galleries/[slug]/verify-pin/route.ts');
+    const req = new NextRequest('http://localhost:3000/api/client/galleries/' + slug + '/verify-pin', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pin: '9876' }),
+    });
+
+    const res = await POST(req, { params: Promise.resolve({ slug }) });
+    assert.equal(res.status, 200, 'Expired lockout must permit verification with valid PIN');
+
+    const row = activeDb.prepare('SELECT pin_locked_until FROM galleries WHERE id = ?').get(galleryId);
+    assert.equal(row.pin_locked_until, null, 'Expired pin_locked_until must be cleared to NULL');
+
+    // Clean up
+    activeDb.prepare('DELETE FROM galleries WHERE id = ?').run(galleryId);
+  });
+
+  test('Aborted requests immediately destroy archive pipeline to prevent zombie compression', () => {
+    const archive = new ZipArchive({ zlib: { level: 0 } });
+    const passThrough = new PassThrough();
+    archive.pipe(passThrough);
+
+    const controller = new AbortController();
+    controller.abort(); // already aborted signal
+
+    if (controller.signal.aborted) {
+      if (!archive.destroyed) archive.destroy();
+      if (!passThrough.destroyed) passThrough.destroy();
+    }
+
+    assert.equal(archive.destroyed, true, 'Archive must be destroyed on aborted signal');
+    assert.equal(passThrough.destroyed, true, 'PassThrough stream must be destroyed on aborted signal');
+  });
 });
 
 

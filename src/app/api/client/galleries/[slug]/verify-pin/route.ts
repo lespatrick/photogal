@@ -64,11 +64,19 @@ export async function POST(
 
     const clientIp = extractClientIp(req);
     const ipHash = crypto.createHash('sha256').update(clientIp + getAuthSecret()).digest('hex');
-    const isPinCorrect = secureComparePins(cleanPin, gallery.pin_code);
 
     const txResult = db.transaction(() => {
-      // Re-check if gallery is locked by photographer or system hard lockout
-      const fresh = db.prepare('SELECT pin_locked_until FROM galleries WHERE id = ?').get(gallery.id) as { pin_locked_until: string | null } | undefined;
+      // Re-check fresh gallery state inside atomic transaction
+      const fresh = db.prepare('SELECT pin_locked_until, pin_code, pin_version FROM galleries WHERE id = ?').get(gallery.id) as {
+        pin_locked_until: string | null;
+        pin_code: string;
+        pin_version: number;
+      } | undefined;
+
+      const activePin = fresh?.pin_code || gallery.pin_code;
+      const activePinVersion = fresh?.pin_version || gallery.pin_version || 1;
+      const isPinCorrect = secureComparePins(cleanPin, activePin);
+
       if (fresh?.pin_locked_until) {
         const lockExpiry = parseSqliteDate(fresh.pin_locked_until).getTime();
         if (lockExpiry > Date.now()) {
@@ -80,6 +88,9 @@ export async function POST(
               : `Galeria została zablokowana ze względów bezpieczeństwa po wielokrotnych błędnych próbach wprowadzenia PIN. Spróbuj ponownie za ${remainingMinutes} min lub skontaktuj się z fotografem.`,
             locked: true,
           };
+        } else {
+          // Lockout has expired -> clear pin_locked_until
+          db.prepare('UPDATE galleries SET pin_locked_until = NULL WHERE id = ?').run(gallery.id);
         }
       }
 
@@ -158,6 +169,7 @@ export async function POST(
       return {
         status: 200,
         applyTarpit: recentFails >= 3,
+        pinVersion: activePinVersion,
       };
     }).immediate();
 
@@ -175,7 +187,7 @@ export async function POST(
       }, { status: txResult.status });
     }
 
-    const token = createClientToken(gallery.id, gallery.pin_version || 1);
+    const token = createClientToken(gallery.id, txResult.pinVersion || gallery.pin_version || 1);
 
     const res = NextResponse.json({
       success: true,
