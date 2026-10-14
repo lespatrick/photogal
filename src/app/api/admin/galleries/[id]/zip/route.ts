@@ -62,20 +62,27 @@ export async function GET(
       }
     });
 
+    req.signal?.addEventListener('abort', () => {
+      if (!archive.destroyed) archive.destroy();
+      if (!passThrough.destroyed) passThrough.destroy();
+    });
+
     archive.pipe(passThrough);
 
     const nameTracker = new Map<string, number>();
     for (const p of photos) {
       const fullPath = resolveSafeStoragePath(p.original_path);
       if (fullPath && fs.existsSync(fullPath)) {
-        let entryName = p.filename;
-        const count = nameTracker.get(p.filename) || 0;
+        const normalized = p.filename.trim().replace(/\\/g, '/');
+        const safeBaseName = path.basename(normalized).replace(/[/\\?%*:|"<>]/g, '_').replace(/^\.+/, '') || 'photo.jpg';
+        const count = nameTracker.get(safeBaseName) || 0;
+        let entryName = safeBaseName;
         if (count > 0) {
-          const ext = path.extname(p.filename);
-          const base = path.basename(p.filename, ext);
+          const ext = path.extname(safeBaseName);
+          const base = path.basename(safeBaseName, ext);
           entryName = `${base}_${count + 1}${ext}`;
         }
-        nameTracker.set(p.filename, count + 1);
+        nameTracker.set(safeBaseName, count + 1);
         archive.file(fullPath, { name: entryName });
       }
     }

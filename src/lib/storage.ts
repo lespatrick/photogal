@@ -3,9 +3,23 @@ import fs from 'fs';
 
 export const STORAGE_DIR = path.resolve(process.cwd(), 'storage');
 
+export function getSafeGalleryBase(galleryId: string): string | null {
+  if (!galleryId || typeof galleryId !== 'string') return null;
+  const safeId = path.basename(galleryId.trim());
+  if (!safeId || safeId === '.' || safeId === '..') return null;
+  const galleriesRoot = path.resolve(STORAGE_DIR, 'galleries');
+  const base = path.resolve(galleriesRoot, safeId);
+  if (!base.startsWith(galleriesRoot + path.sep) || base === galleriesRoot) {
+    return null;
+  }
+  return base;
+}
+
 export function ensureGalleryStorage(galleryId: string) {
-  const safeId = path.basename(galleryId);
-  const base = path.resolve(STORAGE_DIR, 'galleries', safeId);
+  const base = getSafeGalleryBase(galleryId);
+  if (!base) {
+    throw new Error(`Invalid galleryId for storage: ${galleryId}`);
+  }
   const dirs = [
     path.resolve(base, 'original'),
     path.resolve(base, 'thumb'),
@@ -24,35 +38,40 @@ export function ensureGalleryStorage(galleryId: string) {
   };
 }
 
-export function getFilePath(galleryId: string, type: 'original' | 'thumb' | 'preview', filename: string): string {
-  const safeId = path.basename(galleryId);
+export function getFilePath(galleryId: string, type: 'original' | 'thumb' | 'preview', filename: string): string | null {
+  const base = getSafeGalleryBase(galleryId);
+  if (!base) return null;
   const safeFile = path.basename(filename);
-  return path.resolve(STORAGE_DIR, 'galleries', safeId, type, safeFile);
+  if (!safeFile || safeFile === '.' || safeFile === '..') return null;
+  return path.resolve(base, type, safeFile);
 }
 
 export function resolveSafeStoragePath(relPath: string): string | null {
   if (!relPath || typeof relPath !== 'string') return null;
   // Strip any leading slashes, backslashes, or relative markers
-  const cleanRel = path.normalize(relPath).replace(/^(\.\.[\/\\]|[/\\])+/, '');
+  const cleanRel = path.normalize(relPath.trim()).replace(/^(\.\.[\/\\]|[/\\])+/, '');
+  if (!cleanRel || cleanRel === '.' || cleanRel === '..') return null;
   const fullPath = path.resolve(STORAGE_DIR, cleanRel);
   const normalizedStorage = path.resolve(STORAGE_DIR);
-  if (!fullPath.startsWith(normalizedStorage + path.sep) && fullPath !== normalizedStorage) {
+  if (!fullPath.startsWith(normalizedStorage + path.sep) || fullPath === normalizedStorage) {
     return null;
   }
   return fullPath;
 }
 
 export function deleteGalleryStorage(galleryId: string) {
-  const safeId = path.basename(galleryId);
-  const base = path.resolve(STORAGE_DIR, 'galleries', safeId);
-  if (fs.existsSync(base)) {
+  const base = getSafeGalleryBase(galleryId);
+  if (!base) return;
+  const galleriesRoot = path.resolve(STORAGE_DIR, 'galleries');
+  // Extra safeguard: base must be strictly inside galleriesRoot and unequal to it
+  if (base.startsWith(galleriesRoot + path.sep) && base !== galleriesRoot && fs.existsSync(base)) {
     fs.rmSync(base, { recursive: true, force: true });
   }
 }
 
 export function deletePhotoFiles(galleryId: string, originalPath: string, thumbPath: string, previewPath: string) {
-  const safeId = path.basename(galleryId);
-  const galleryBase = path.resolve(STORAGE_DIR, 'galleries', safeId);
+  const galleryBase = getSafeGalleryBase(galleryId);
+  if (!galleryBase) return;
 
   const fullOriginal = resolveSafeStoragePath(originalPath);
   const fullThumb = resolveSafeStoragePath(thumbPath);

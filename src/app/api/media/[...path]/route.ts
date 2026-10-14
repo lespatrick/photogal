@@ -3,7 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import { Readable } from 'stream';
 import db from '@/lib/db';
-import { verifyAdminSession, verifyClientToken } from '@/lib/auth';
+import { verifyAdminSession, verifyClientToken, extractClientToken } from '@/lib/auth';
 import { resolveSafeStoragePath } from '@/lib/storage';
 
 export async function GET(
@@ -49,28 +49,24 @@ export async function GET(
         return new NextResponse('File not found', { status: 404 });
       }
 
-      const clientCookie = req.cookies.get(`photogal_client_${galleryId}`)?.value;
-      const queryToken = req.nextUrl.searchParams.get('token');
-      const headerToken = req.headers.get('x-client-token');
-      const clientToken = clientCookie || queryToken || headerToken;
-
+      const clientToken = extractClientToken(req, galleryId);
       const isClientAuthorized = clientToken ? verifyClientToken(clientToken, galleryId) : false;
 
       if (!isClientAuthorized) {
         // Allow only cover thumbnail for public PIN gate preview
         if (mediaType === 'thumb') {
-          const isCover = gallery.cover_photo_id
-            ? db.prepare(`
-                SELECT id FROM photos 
-                WHERE gallery_id = ? AND thumb_path = ? AND id = ?
-              `).get(galleryId, relativePath, gallery.cover_photo_id)
-            : db.prepare(`
-                SELECT id FROM photos 
-                WHERE gallery_id = ? AND thumb_path = ?
+          const coverRow = gallery.cover_photo_id
+            ? (db.prepare(`
+                SELECT thumb_path FROM photos 
+                WHERE gallery_id = ? AND id = ?
+              `).get(galleryId, gallery.cover_photo_id) as { thumb_path: string } | undefined)
+            : (db.prepare(`
+                SELECT thumb_path FROM photos 
+                WHERE gallery_id = ?
                 ORDER BY order_index ASC, created_at ASC LIMIT 1
-              `).get(galleryId, relativePath);
+              `).get(galleryId) as { thumb_path: string } | undefined);
 
-          if (!isCover) {
+          if (!coverRow || coverRow.thumb_path !== relativePath) {
             return new NextResponse('Brak autoryzacji do przeglądania zdjęć', { status: 401 });
           }
         } else {
@@ -116,6 +112,9 @@ export async function GET(
     else if (ext === '.tiff' || ext === '.tif') contentType = 'image/tiff';
 
     const fileStream = fs.createReadStream(fullPath);
+    req.signal?.addEventListener('abort', () => {
+      if (!fileStream.destroyed) fileStream.destroy();
+    });
     const readable = Readable.toWeb(fileStream);
 
     const headers: Record<string, string> = {
