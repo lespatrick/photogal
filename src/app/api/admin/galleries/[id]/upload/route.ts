@@ -51,12 +51,17 @@ export async function POST(
 
     for (const file of files) {
       try {
-        if (file.size > 50 * 1024 * 1024) {
-          errors.push({ filename: file.name, error: 'Plik przekracza maksymalny limit 50MB' });
+        if (!file || typeof file !== 'object' || typeof (file as any).arrayBuffer !== 'function') {
+          errors.push({ filename: 'nieznany', error: 'Nieprawidłowy plik' });
           continue;
         }
 
-        const originalName = file.name;
+        if (file.size > 50 * 1024 * 1024) {
+          errors.push({ filename: file.name || 'nieznany', error: 'Plik przekracza maksymalny limit 50MB' });
+          continue;
+        }
+
+        const originalName = file.name || 'photo.jpg';
         const arrayBuffer = await file.arrayBuffer();
         const buffer = Buffer.from(arrayBuffer);
 

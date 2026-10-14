@@ -50,6 +50,10 @@ export async function POST(
       return NextResponse.json({ error: 'Galeria nie została odnaleziona' }, { status: 404 });
     }
 
+    if (gallery.status === 'archived') {
+      return NextResponse.json({ error: 'Galeria została zarchiwizowana i nie jest już dostępna.' }, { status: 403 });
+    }
+
     // 1. Rate limiting & PIN verification inside atomic immediate transaction
     // Periodically prune pin attempts older than 7 days (10% sample rate)
     if (Math.random() < 0.1) {

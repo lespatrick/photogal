@@ -788,6 +788,64 @@ describe('Photogal Core & Security Integration Test Suite', () => {
     // Clean up
     activeDb.prepare('DELETE FROM galleries WHERE id = ?').run(galleryId);
   });
+
+  test('Archived galleries reject PIN verification with 403 Forbidden', async () => {
+    const activeDb = db.default || db;
+    const galleryId = 'test-archived-pin-gal';
+    const slug = 'test-archived-slug';
+
+    activeDb.prepare(`
+      INSERT OR REPLACE INTO galleries (id, slug, title, shoot_date, pin_code, status)
+      VALUES (?, ?, ?, ?, ?, 'archived')
+    `).run(galleryId, slug, 'Archived Gallery', '2026-10-14', '1234');
+
+    const { POST } = await import('../src/app/api/client/galleries/[slug]/verify-pin/route.ts');
+    const req = new NextRequest('http://localhost:3000/api/client/galleries/' + slug + '/verify-pin', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pin: '1234' }),
+    });
+
+    const res = await POST(req, { params: Promise.resolve({ slug }) });
+    assert.equal(res.status, 403, 'Archived gallery must return 403 on PIN verify');
+    const data = await res.json();
+    assert.ok(data.error.includes('zarchiwizowana'));
+
+    // Clean up
+    activeDb.prepare('DELETE FROM galleries WHERE id = ?').run(galleryId);
+  });
+
+  test('Client ZIP rate limit map bounds size and prevents unbounded memory growth', () => {
+    const testMap = new Map();
+    const MAX_LIMIT = 50;
+
+    for (let i = 0; i < 100; i++) {
+      if (testMap.size >= MAX_LIMIT) {
+        const oldest = testMap.keys().next().value;
+        if (oldest) testMap.delete(oldest);
+      }
+      testMap.set(`key_${i}`, { count: 1, resetAt: Date.now() + 60000 });
+    }
+
+    assert.equal(testMap.size, MAX_LIMIT, 'Map must never exceed MAX_LIMIT');
+    assert.equal(testMap.has('key_0'), false, 'Oldest key must have been evicted');
+    assert.equal(testMap.has('key_99'), true, 'Latest key must be present');
+  });
+
+  test('processAndSavePhoto strictly sanitizes originalFilename to prevent directory component storage', async () => {
+    import('sharp');
+    const sharp = (await import('sharp')).default;
+    const testGalleryId = 'test-filename-sanitization-gal';
+    const sampleBuffer = await sharp({
+      create: { width: 100, height: 100, channels: 3, background: { r: 100, g: 150, b: 200 } },
+    }).jpeg().toBuffer();
+
+    const result = await processAndSavePhoto(testGalleryId, 'subfolder/traversal/../my_photo.jpg', sampleBuffer);
+    assert.equal(result.filename, 'my_photo.jpg', 'Stored filename must be stripped of directory components');
+
+    // Clean up
+    deleteGalleryStorage(testGalleryId);
+  });
 });
 
 

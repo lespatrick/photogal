@@ -85,8 +85,10 @@ export async function processAndSavePhoto(
       .toFile(thumbFullPath);
     writtenFiles.push(thumbFullPath);
 
+    const safeStoredFilename = path.basename(originalFilename.trim().replace(/\\/g, '/')).replace(/[\r\n\0]/g, '') || 'photo.jpg';
+
     return {
-      filename: originalFilename,
+      filename: safeStoredFilename,
       originalRelativePath: `galleries/${galleryId}/original/${originalFile}`,
       thumbRelativePath: `galleries/${galleryId}/thumb/${thumbFile}`,
       previewRelativePath: `galleries/${galleryId}/preview/${previewFile}`,

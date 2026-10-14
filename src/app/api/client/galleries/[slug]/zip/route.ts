@@ -8,6 +8,7 @@ import { verifyClientToken, extractClientToken } from '@/lib/auth';
 import { resolveSafeStoragePath } from '@/lib/storage';
 
 const zipRateLimitMap = new Map<string, { count: number; resetAt: number }>();
+const MAX_ZIP_RATE_LIMIT_ENTRIES = 2000;
 
 export async function GET(
   req: NextRequest,
@@ -48,10 +49,14 @@ export async function GET(
       }
       rl.count++;
     } else {
-      if (zipRateLimitMap.size > 1000) {
+      if (zipRateLimitMap.size > 200) {
         for (const [k, v] of zipRateLimitMap.entries()) {
           if (v.resetAt <= now) zipRateLimitMap.delete(k);
         }
+      }
+      if (zipRateLimitMap.size >= MAX_ZIP_RATE_LIMIT_ENTRIES) {
+        const oldestKey = zipRateLimitMap.keys().next().value;
+        if (oldestKey) zipRateLimitMap.delete(oldestKey);
       }
       zipRateLimitMap.set(rlKey, { count: 1, resetAt: now + 5 * 60 * 1000 });
     }
