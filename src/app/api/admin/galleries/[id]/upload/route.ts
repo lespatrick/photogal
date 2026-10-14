@@ -33,6 +33,11 @@ export async function POST(
       return NextResponse.json({ error: 'Maksymalna wielkość pojedynczej paczki to 50 plików' }, { status: 400 });
     }
 
+    const totalBatchBytes = files.reduce((acc, f) => acc + (f?.size || 0), 0);
+    if (totalBatchBytes > 300 * 1024 * 1024) {
+      return NextResponse.json({ error: 'Łączny rozmiar paczki przekracza maksymalny limit 300MB' }, { status: 400 });
+    }
+
     const currentMaxOrder = (db.prepare('SELECT MAX(order_index) as max_ord FROM photos WHERE gallery_id = ?').get(actualId) as any)?.max_ord || 0;
     let nextOrder = currentMaxOrder + 1;
 

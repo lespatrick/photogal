@@ -28,14 +28,20 @@ ENV HOSTNAME="0.0.0.0"
 # Runtime compatibility for native Node.js binaries (better-sqlite3, sharp)
 RUN apk add --no-cache libc6-compat
 
-# Create persistent storage directories
-RUN mkdir -p /app/data /app/storage
+# Create persistent storage directories and unprivileged application user
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 nextjs && \
+    mkdir -p /app/data /app/storage && \
+    chown -R nextjs:nodejs /app
 
-# Copy standalone build, static files, and helper scripts
-COPY --from=builder /app/public ./public
-COPY --from=builder /app/.next/standalone ./
-COPY --from=builder /app/.next/static ./.next/static
-COPY --from=builder /app/scripts ./scripts
+# Copy standalone build, static files, and helper scripts with unprivileged ownership
+COPY --from=builder --chown=nextjs:nodejs /app/public ./public
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+COPY --from=builder --chown=nextjs:nodejs /app/scripts ./scripts
+
+# Drop root privileges
+USER nextjs
 
 # Healthcheck
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \

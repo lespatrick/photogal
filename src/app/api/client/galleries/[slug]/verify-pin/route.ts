@@ -49,6 +49,13 @@ export async function POST(
     }
 
     // 1. Rate limiting & PIN verification inside atomic immediate transaction
+    // Periodically prune pin attempts older than 7 days (10% sample rate)
+    if (Math.random() < 0.1) {
+      try {
+        db.prepare("DELETE FROM pin_attempts WHERE attempted_at < datetime('now', '-7 days')").run();
+      } catch {}
+    }
+
     const clientIp = extractClientIp(req);
     const ipHash = crypto.createHash('sha256').update(clientIp + getAuthSecret()).digest('hex');
     const isPinCorrect = secureComparePins(pin.toString(), gallery.pin_code);

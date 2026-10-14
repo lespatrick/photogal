@@ -118,6 +118,12 @@ export function initDatabase() {
       value TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS admin_login_attempts (
+      id TEXT PRIMARY KEY,
+      ip_hash TEXT NOT NULL,
+      attempted_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
     CREATE INDEX IF NOT EXISTS idx_galleries_slug ON galleries(slug);
     CREATE INDEX IF NOT EXISTS idx_photos_gallery ON photos(gallery_id);
     CREATE INDEX IF NOT EXISTS idx_selections_gallery ON selections(gallery_id);
@@ -125,6 +131,7 @@ export function initDatabase() {
     CREATE INDEX IF NOT EXISTS idx_authenticators_admin ON authenticators(admin_id);
     CREATE INDEX IF NOT EXISTS idx_pin_attempts_lookup ON pin_attempts(gallery_id, ip_hash, attempted_at);
     CREATE INDEX IF NOT EXISTS idx_auth_challenges_lookup ON auth_challenges(challenge, user_type);
+    CREATE INDEX IF NOT EXISTS idx_admin_login_attempts ON admin_login_attempts(ip_hash, attempted_at);
   `);
 
   // Safe migrations
@@ -141,12 +148,28 @@ export function initDatabase() {
     db.prepare("DELETE FROM pin_attempts WHERE attempted_at < datetime('now', '-7 days')").run();
   } catch {}
 
-  // Seed default admin if none exists (username: admin, pass: admin123 or from env)
+  // Prune admin_login_attempts older than 24 hours
+  try {
+    db.prepare("DELETE FROM admin_login_attempts WHERE attempted_at < datetime('now', '-24 hours')").run();
+  } catch {}
+
+  // Seed default admin if none exists
   try {
     const defaultAdmin = db.prepare('SELECT id FROM admins WHERE username = ?').get('admin');
     if (!defaultAdmin) {
       const salt = crypto.randomBytes(16).toString('hex');
-      const defaultPassword = process.env.ADMIN_PASSWORD || 'admin123';
+      let defaultPassword = process.env.ADMIN_PASSWORD;
+      if (!defaultPassword) {
+        if (process.env.NODE_ENV === 'production') {
+          defaultPassword = crypto.randomBytes(12).toString('base64url');
+          console.warn(`\n============================================================\n⚠️ [SECURITY] No ADMIN_PASSWORD supplied in production!\nGenerated temporary secure administrator password for 'admin':\n\n  Password: ${defaultPassword}\n\nPlease change this password immediately in Settings.\n============================================================\n`);
+        } else {
+          defaultPassword = 'admin123';
+          console.log('Initialized default development admin account: username=admin');
+        }
+      } else {
+        console.log('Initialized admin account from ADMIN_PASSWORD environment variable.');
+      }
       const hash = crypto.scryptSync(defaultPassword, salt, 64).toString('hex');
       const passwordHash = `${salt}:${hash}`;
       db.prepare('INSERT OR IGNORE INTO admins (id, username, password_hash, token_version) VALUES (?, ?, ?, 1)').run(
@@ -154,7 +177,6 @@ export function initDatabase() {
         'admin',
         passwordHash
       );
-      console.log('Initialized default admin account: username=admin');
     }
   } catch {
     // Ignore concurrency race conditions during Next.js parallel route compilation

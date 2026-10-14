@@ -37,8 +37,10 @@ export async function processAndSavePhoto(
     throw new Error('Plik nie jest prawidłowym obrazem lub jest uszkodzony.');
   }
 
-  // Generate safe unique base name
-  const rawBase = path.basename(originalFilename, ext).replace(/[^a-zA-Z0-9_-]/g, '_');
+  // Generate safe unique base name (case-insensitive extension stripping)
+  const originalExt = path.extname(originalFilename);
+  const strippedFilename = originalExt ? originalFilename.slice(0, -originalExt.length) : originalFilename;
+  const rawBase = path.basename(strippedFilename).replace(/[^a-zA-Z0-9_-]/g, '_') || 'photo';
   const uniquePrefix = Date.now().toString(36) + '-' + Math.random().toString(36).substring(2, 6);
   const baseName = `${uniquePrefix}_${rawBase}`;
 
@@ -66,14 +68,12 @@ export async function processAndSavePhoto(
     const finalHeight = isRotated ? originalWidth : originalHeight;
     const aspectRatio = +(finalWidth / finalHeight).toFixed(4);
 
-    // 3. Generate High-Res WebP Preview for Lightbox (max 2200x2200)
-    const previewBuffer = await sharp(buffer)
+    // 3. Generate High-Res WebP Preview directly to disk (max 2200x2200) to minimize memory footprint
+    await sharp(buffer)
       .rotate()
       .resize(2200, 2200, { fit: 'inside', withoutEnlargement: true })
       .webp({ quality: 86, effort: 3 })
-      .toBuffer();
-
-    await fs.promises.writeFile(previewFullPath, previewBuffer);
+      .toFile(previewFullPath);
     writtenFiles.push(previewFullPath);
 
     // 4. Generate WebP Thumbnail directly from source buffer to eliminate lossy re-encoding artifacts

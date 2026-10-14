@@ -17,8 +17,23 @@ export function proxy(req: NextRequest) {
 
   // Check if connection is plaintext HTTP
   const isHttp = forwardedProto === 'http' || (!forwardedProto && url.protocol === 'http:');
-  const hostname = rawHost.split(':')[0].toLowerCase();
+  
+  // Extract and validate hostname to defeat Host Header Injection and Open Redirects
+  const hostWithoutPort = rawHost.split(':')[0].trim().toLowerCase();
+  const isValidHostname = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$/.test(hostWithoutPort);
+  let hostname = isValidHostname ? hostWithoutPort : url.hostname.toLowerCase();
+
+  const allowedHosts = [
+    ...(process.env.ALLOWED_HOSTS ? process.env.ALLOWED_HOSTS.split(',').map((h) => h.trim().toLowerCase()) : []),
+    ...(process.env.RP_ID ? [process.env.RP_ID.trim().toLowerCase()] : []),
+  ].filter(Boolean);
+
   const isLoopback = hostname === 'localhost' || hostname === '127.0.0.1';
+
+  // Enforce allowed host whitelist if configured
+  if (allowedHosts.length > 0 && !isLoopback && !allowedHosts.includes(hostname)) {
+    hostname = allowedHosts[0];
+  }
 
   // Internal health check exemption (e.g. Docker container wget http://127.0.0.1:3000/ or local dev)
   const isInternalLoopback = isLoopback && !forwardedProto;
@@ -29,8 +44,9 @@ export function proxy(req: NextRequest) {
       return NextResponse.next();
     }
 
-    // Build secure HTTPS destination
-    const cleanHost = rawHost.replace(/:80$/, '');
+    // Build secure HTTPS destination without insecure HTTP ports
+    const customHttpsPort = process.env.HTTPS_PORT ? `:${process.env.HTTPS_PORT}` : '';
+    const cleanHost = `${hostname}${customHttpsPort}`;
     const httpsUrl = `https://${cleanHost}${url.pathname}${url.search}`;
 
     // 308 Permanent Redirect preserves HTTP method (GET, POST, PATCH, DELETE) and payload

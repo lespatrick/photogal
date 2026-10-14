@@ -27,6 +27,20 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 
+const MAX_MEDIA_ENTRIES = 60;
+
+async function pruneMediaCache(cache) {
+  try {
+    const keys = await cache.keys();
+    if (keys.length > MAX_MEDIA_ENTRIES) {
+      const deleteCount = keys.length - MAX_MEDIA_ENTRIES;
+      for (let i = 0; i < deleteCount; i++) {
+        await cache.delete(keys[i]);
+      }
+    }
+  } catch {}
+}
+
 self.addEventListener('fetch', (event) => {
   // Avoid intercepting API mutations or non-GET requests
   if (event.request.method !== 'GET') return;
@@ -39,8 +53,9 @@ self.addEventListener('fetch', (event) => {
         .then((networkResponse) => {
           if (networkResponse && networkResponse.status === 200) {
             const responseClone = networkResponse.clone();
-            caches.open(MEDIA_CACHE_NAME).then((cache) => {
-              cache.put(event.request, responseClone);
+            caches.open(MEDIA_CACHE_NAME).then(async (cache) => {
+              await cache.put(event.request, responseClone);
+              pruneMediaCache(cache);
             });
           }
           return networkResponse;

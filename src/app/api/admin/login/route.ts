@@ -4,10 +4,6 @@ import { verifyPassword, createAdminSession, destroyAdminSession, verifyAdminSes
 
 import crypto from 'crypto';
 
-// In-memory rate limiting for admin password login (15 min window)
-const failedAttemptsMap = new Map<string, { count: number; lastAttempt: number }>();
-const MAX_MAP_ENTRIES = 10000;
-
 // Dummy hash for constant-time comparison against nonexistent users
 const DUMMY_HASH = '0123456789abcdef0123456789abcdef:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
 
@@ -18,34 +14,34 @@ function getAdminIpHash(req: NextRequest): string {
 
 export async function POST(req: NextRequest) {
   try {
-    const now = Date.now();
-
-    // Prune stale entries (> 15 min) when map grows
-    if (failedAttemptsMap.size > 100) {
-      for (const [key, val] of failedAttemptsMap.entries()) {
-        if (now - val.lastAttempt > 15 * 60 * 1000) {
-          failedAttemptsMap.delete(key);
-        }
-      }
-    }
-
     const ipHash = getAdminIpHash(req);
-    const attempt = failedAttemptsMap.get(ipHash);
 
-    if (attempt && (now - attempt.lastAttempt < 15 * 60 * 1000)) {
-      if (attempt.count >= 5) {
-        return NextResponse.json({
-          error: 'Zbyt wiele nieudanych prób logowania. Odczekaj 15 minut przed kolejną próbą.',
-        }, { status: 429 });
-      }
-      if (attempt.count >= 3) {
-        // Tarpit delay
-        await new Promise((r) => setTimeout(r, 2000));
-      }
+    // Prune stale attempts (10% sample rate)
+    if (Math.random() < 0.1) {
+      try {
+        db.prepare("DELETE FROM admin_login_attempts WHERE attempted_at < datetime('now', '-24 hours')").run();
+      } catch {}
     }
 
-    let username: string | undefined;
-    let password: string | undefined;
+    // Query failed attempts in the last 15 minutes from persistent SQLite
+    const recentFails = (db.prepare(`
+      SELECT COUNT(*) as count FROM admin_login_attempts 
+      WHERE ip_hash = ? AND attempted_at > datetime('now', '-15 minutes')
+    `).get(ipHash) as any)?.count || 0;
+
+    if (recentFails >= 5) {
+      return NextResponse.json({
+        error: 'Zbyt wiele nieudanych prób logowania. Odczekaj 15 minut przed kolejną próbą.',
+      }, { status: 429 });
+    }
+
+    if (recentFails >= 3) {
+      // Tarpit delay
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+
+    let username: unknown;
+    let password: unknown;
     try {
       const body = await req.json();
       username = body?.username;
@@ -54,11 +50,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Nieprawidłowe dane żądania' }, { status: 400 });
     }
 
-    if (!username || !password) {
+    if (typeof username !== 'string' || typeof password !== 'string' || !username.trim() || !password) {
       return NextResponse.json({ error: 'Nazwa użytkownika i hasło są wymagane.' }, { status: 400 });
     }
 
-    const admin = db.prepare('SELECT * FROM admins WHERE username = ?').get(username) as {
+    const admin = db.prepare('SELECT * FROM admins WHERE username = ?').get(username.trim()) as {
       id: string;
       username: string;
       password_hash: string;
@@ -70,17 +66,15 @@ export async function POST(req: NextRequest) {
     const isValid = !!admin && isPasswordValid;
 
     if (!isValid) {
-      if (failedAttemptsMap.size >= MAX_MAP_ENTRIES) {
-        const oldestKey = failedAttemptsMap.keys().next().value;
-        if (oldestKey) failedAttemptsMap.delete(oldestKey);
-      }
-      const prev = failedAttemptsMap.get(ipHash) || { count: 0, lastAttempt: now };
-      failedAttemptsMap.set(ipHash, { count: prev.count + 1, lastAttempt: now });
+      db.prepare('INSERT INTO admin_login_attempts (id, ip_hash) VALUES (?, ?)').run(
+        crypto.randomUUID(),
+        ipHash
+      );
       return NextResponse.json({ error: 'Nieprawidłowy login lub hasło.' }, { status: 401 });
     }
 
     // Success -> clear rate limit
-    failedAttemptsMap.delete(ipHash);
+    db.prepare('DELETE FROM admin_login_attempts WHERE ip_hash = ?').run(ipHash);
 
     await createAdminSession(admin.id);
     return NextResponse.json({ success: true, username: admin.username });

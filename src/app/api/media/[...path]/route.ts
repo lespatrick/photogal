@@ -63,16 +63,20 @@ export async function GET(
       if (!isClientAuthorized) {
         // Allow only cover thumbnail for public PIN gate preview
         if (mediaType === 'thumb') {
-          const coverRow = gallery.cover_photo_id
-            ? (db.prepare(`
-                SELECT thumb_path FROM photos 
-                WHERE gallery_id = ? AND id = ?
-              `).get(galleryId, gallery.cover_photo_id) as { thumb_path: string } | undefined)
-            : (db.prepare(`
-                SELECT thumb_path FROM photos 
-                WHERE gallery_id = ?
-                ORDER BY order_index ASC, created_at ASC LIMIT 1
-              `).get(galleryId) as { thumb_path: string } | undefined);
+          let coverRow: { thumb_path: string } | undefined;
+          if (gallery.cover_photo_id) {
+            coverRow = db.prepare(`
+              SELECT thumb_path FROM photos 
+              WHERE gallery_id = ? AND id = ?
+            `).get(galleryId, gallery.cover_photo_id) as { thumb_path: string } | undefined;
+          }
+          if (!coverRow) {
+            coverRow = db.prepare(`
+              SELECT thumb_path FROM photos 
+              WHERE gallery_id = ?
+              ORDER BY order_index ASC, created_at ASC LIMIT 1
+            `).get(galleryId) as { thumb_path: string } | undefined;
+          }
 
           if (!coverRow || coverRow.thumb_path !== relativePath) {
             return new NextResponse('Brak autoryzacji do przeglądania zdjęć', { status: 401 });
@@ -119,19 +123,13 @@ export async function GET(
     else if (ext === '.heic' || ext === '.heif') contentType = 'image/heic';
     else if (ext === '.tiff' || ext === '.tif') contentType = 'image/tiff';
 
-    const fileStream = fs.createReadStream(fullPath);
-    req.signal?.addEventListener('abort', () => {
-      if (!fileStream.destroyed) fileStream.destroy();
-    });
-    const readable = Readable.toWeb(fileStream);
-
     const headers: Record<string, string> = {
       'Content-Type': contentType,
-      'Content-Length': stat.size.toString(),
       'ETag': etag,
       'Last-Modified': stat.mtime.toUTCString(),
       'Cache-Control': 'private, max-age=86400',
       'X-Content-Type-Options': 'nosniff',
+      'Accept-Ranges': 'bytes',
     };
 
     if (mediaType === 'original') {
@@ -141,7 +139,42 @@ export async function GET(
       headers['Content-Disposition'] = `attachment; filename="${asciiFallback}"; filename*=UTF-8''${encodeURIComponent(downloadName)}`;
     }
 
-    return new NextResponse(readable as ReadableStream, {
+    const rangeHeader = req.headers.get('range');
+    const fileSize = stat.size;
+
+    // Support HTTP Range requests (RFC 7233) for resumable downloads and media streaming
+    if (rangeHeader && rangeHeader.startsWith('bytes=')) {
+      const parts = rangeHeader.replace(/bytes=/, '').split('-');
+      const start = parseInt(parts[0], 10);
+      const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+
+      if (!isNaN(start) && start >= 0 && start < fileSize) {
+        const chunkEnd = Math.min(isNaN(end) ? fileSize - 1 : end, fileSize - 1);
+        if (chunkEnd >= start) {
+          const chunkSize = chunkEnd - start + 1;
+          const rangeStream = fs.createReadStream(fullPath, { start, end: chunkEnd });
+          req.signal?.addEventListener('abort', () => {
+            if (!rangeStream.destroyed) rangeStream.destroy();
+          });
+
+          headers['Content-Range'] = `bytes ${start}-${chunkEnd}/${fileSize}`;
+          headers['Content-Length'] = chunkSize.toString();
+
+          return new NextResponse(Readable.toWeb(rangeStream) as ReadableStream, {
+            status: 206,
+            headers,
+          });
+        }
+      }
+    }
+
+    headers['Content-Length'] = fileSize.toString();
+    const fileStream = fs.createReadStream(fullPath);
+    req.signal?.addEventListener('abort', () => {
+      if (!fileStream.destroyed) fileStream.destroy();
+    });
+
+    return new NextResponse(Readable.toWeb(fileStream) as ReadableStream, {
       status: 200,
       headers,
     });

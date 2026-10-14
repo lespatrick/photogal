@@ -154,8 +154,8 @@ export async function DELETE(
       return NextResponse.json({ error: 'Galeria nie istnieje' }, { status: 404 });
     }
 
-    deleteGalleryStorage(existing.id);
     db.prepare('DELETE FROM galleries WHERE id = ?').run(existing.id);
+    deleteGalleryStorage(existing.id);
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Error deleting gallery:', error);

@@ -375,5 +375,51 @@ describe('Photogal Core & Security Integration Test Suite', () => {
       delete process.env.ALLOW_HTTP;
     }
   });
+
+  test('extractClientIp ignores unverified cf-connecting-ip unless TRUST_CLOUDFLARE=true', () => {
+    const unverifiedCfReq = new NextRequest('http://photogal.local', {
+      headers: {
+        'cf-connecting-ip': '203.0.113.88',
+      },
+    });
+    // Without TRUST_CLOUDFLARE flag, cf-connecting-ip must not be trusted
+    assert.equal(extractClientIp(unverifiedCfReq), '127.0.0.1');
+
+    process.env.TRUST_CLOUDFLARE = 'true';
+    try {
+      assert.equal(extractClientIp(unverifiedCfReq), '203.0.113.88');
+    } finally {
+      delete process.env.TRUST_CLOUDFLARE;
+    }
+  });
+
+  test('Proxy sanitizes host header and rejects open redirect poisoning', () => {
+    const maliciousReq = new NextRequest('http://photogal.studio/admin', {
+      headers: {
+        'host': 'evil.com/@attacker.com',
+        'x-forwarded-proto': 'http',
+      },
+    });
+    const res = proxy(maliciousReq);
+    assert.equal(res.status, 308);
+    // Must fall back to safe nextUrl hostname and never redirect to evil host
+    assert.ok(!res.headers.get('location').includes('@'));
+    assert.ok(res.headers.get('location').startsWith('https://photogal.studio'));
+  });
+
+  test('admin_login_attempts table correctly persists failed logins and supports pruning', () => {
+    const testIpHash = 'test-ip-hash-' + Date.now();
+    const activeDb = db.default || db;
+
+    // Insert attempt
+    activeDb.prepare('INSERT INTO admin_login_attempts (id, ip_hash) VALUES (?, ?)').run('attempt-1', testIpHash);
+    const count = (activeDb.prepare('SELECT COUNT(*) as count FROM admin_login_attempts WHERE ip_hash = ?').get(testIpHash)).count;
+    assert.equal(count, 1);
+
+    // Delete/clear
+    activeDb.prepare('DELETE FROM admin_login_attempts WHERE ip_hash = ?').run(testIpHash);
+    const countAfter = (activeDb.prepare('SELECT COUNT(*) as count FROM admin_login_attempts WHERE ip_hash = ?').get(testIpHash)).count;
+    assert.equal(countAfter, 0);
+  });
 });
 

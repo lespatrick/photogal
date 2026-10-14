@@ -25,14 +25,14 @@ export async function DELETE(
       return NextResponse.json({ error: 'Zdjęcie nie zostało znalezione' }, { status: 404 });
     }
 
-    // Delete files from storage
+    // Run database deletion first inside immediate transaction
+    db.transaction(() => {
+      db.prepare('DELETE FROM photos WHERE id = ?').run(photoId);
+      db.prepare('UPDATE galleries SET cover_photo_id = NULL WHERE id = ? AND cover_photo_id = ?').run(actualId, photoId);
+    }).immediate();
+
+    // After database deletion succeeds, clean up physical files
     deletePhotoFiles(actualId, photo.original_path, photo.thumb_path, photo.preview_path);
-
-    // Delete record from DB
-    db.prepare('DELETE FROM photos WHERE id = ?').run(photoId);
-
-    // Reset cover if this photo was the cover
-    db.prepare('UPDATE galleries SET cover_photo_id = NULL WHERE id = ? AND cover_photo_id = ?').run(actualId, photoId);
 
     return NextResponse.json({ success: true });
   } catch (error) {

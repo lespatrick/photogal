@@ -158,16 +158,26 @@ export function verifyClientToken(token: string, expectedGalleryId: string): boo
 }
 
 export function extractClientIp(req: NextRequest): string {
-  const realIp = req.headers.get('x-real-ip') || req.headers.get('cf-connecting-ip');
+  // If explicitly configured behind Cloudflare, cf-connecting-ip is trusted
+  if (process.env.TRUST_CLOUDFLARE === 'true') {
+    const cfIp = req.headers.get('cf-connecting-ip');
+    if (cfIp) {
+      const clean = cfIp.trim().replace(/[^a-fA-F0-9:.]/g, '').substring(0, 45);
+      if (clean) return clean;
+    }
+  }
+
+  // Prioritize verified X-Real-IP set by reverse proxy (e.g. Nginx proxy_set_header X-Real-IP $remote_addr)
+  const realIp = req.headers.get('x-real-ip');
   if (realIp) {
     const clean = realIp.trim().replace(/[^a-fA-F0-9:.]/g, '').substring(0, 45);
     if (clean) return clean;
   }
 
+  // Fallback: use the rightmost IP appended by the trusted reverse proxy to defeat client spoofing
   const forwarded = req.headers.get('x-forwarded-for');
   if (forwarded) {
     const list = forwarded.split(',').map((s) => s.trim().replace(/[^a-fA-F0-9:.]/g, '')).filter(Boolean);
-    // Use the rightmost IP appended by the trusted reverse proxy to defeat client spoofing
     if (list.length > 0) {
       return list[list.length - 1].substring(0, 45);
     }
