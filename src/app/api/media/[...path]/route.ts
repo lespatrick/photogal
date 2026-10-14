@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import path from 'path';
 import fs from 'fs';
 import { Readable } from 'stream';
-import db from '@/lib/db';
+import db, { parseSqliteDate } from '@/lib/db';
 import { verifyAdminSession, verifyClientToken, extractClientToken } from '@/lib/auth';
 import { getFilePath, getSafeGalleryBase } from '@/lib/storage';
 
@@ -43,7 +43,7 @@ export async function GET(
 
     if (!isAdmin) {
       const gallery = db.prepare(`
-        SELECT id, status, allow_zip_download, cover_photo_id, pin_version 
+        SELECT id, status, allow_zip_download, cover_photo_id, pin_version, pin_locked_until 
         FROM galleries 
         WHERE id = ?
       `).get(galleryId) as {
@@ -52,10 +52,22 @@ export async function GET(
         allow_zip_download: number;
         cover_photo_id: string | null;
         pin_version?: number;
+        pin_locked_until?: string | null;
       } | undefined;
 
       if (!gallery || gallery.status === 'draft') {
         return new NextResponse('File not found', { status: 404 });
+      }
+
+      if (gallery.status === 'archived') {
+        return new NextResponse('Galeria została zarchiwizowana', { status: 403 });
+      }
+
+      if (gallery.pin_locked_until) {
+        const lockExpiry = parseSqliteDate(gallery.pin_locked_until).getTime();
+        if (lockExpiry > Date.now()) {
+          return new NextResponse('Galeria zablokowana ze względów bezpieczeństwa', { status: 423 });
+        }
       }
 
       const clientToken = extractClientToken(req, galleryId);

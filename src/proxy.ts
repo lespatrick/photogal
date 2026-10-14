@@ -44,6 +44,11 @@ export function proxy(req: NextRequest) {
     } else {
       return new NextResponse('Invalid Host', { status: 400 });
     }
+  } else if (allowedHosts.length === 0 && !isLoopback) {
+    // When allowedHosts is not configured, defeat Open Redirects by restricting HTTP redirects to url.hostname
+    if (isHttp && !isInternalLoopback && url.hostname && url.hostname !== 'localhost' && url.hostname !== '127.0.0.1') {
+      hostname = url.hostname.toLowerCase();
+    }
   }
 
   if (isHttp && !isInternalLoopback) {

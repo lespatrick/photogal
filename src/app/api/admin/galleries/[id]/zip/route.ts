@@ -69,20 +69,20 @@ export async function GET(
 
     archive.pipe(passThrough);
 
-    const nameTracker = new Map<string, number>();
+    const usedNames = new Set<string>();
     for (const p of photos) {
       const fullPath = resolveSafeStoragePath(p.original_path);
       if (fullPath && fs.existsSync(fullPath)) {
         const normalized = p.filename.trim().replace(/\\/g, '/');
         const safeBaseName = path.basename(normalized).replace(/[/\\?%*:|"<>]/g, '_').replace(/^\.+/, '') || 'photo.jpg';
-        const count = nameTracker.get(safeBaseName) || 0;
         let entryName = safeBaseName;
-        if (count > 0) {
-          const ext = path.extname(safeBaseName);
-          const base = path.basename(safeBaseName, ext);
-          entryName = `${base}_${count + 1}${ext}`;
+        let counter = 2;
+        const ext = path.extname(safeBaseName);
+        const base = path.basename(safeBaseName, ext);
+        while (usedNames.has(entryName)) {
+          entryName = `${base}_${counter++}${ext}`;
         }
-        nameTracker.set(safeBaseName, count + 1);
+        usedNames.add(entryName);
         archive.file(fullPath, { name: entryName });
       }
     }

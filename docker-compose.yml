@@ -14,6 +14,9 @@ services:
       - HOSTNAME=0.0.0.0
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
       - AUTH_SECRET=${AUTH_SECRET:-}
+      - TRUST_PROXY=${TRUST_PROXY:-true}
+      - ALLOWED_HOSTS=${ALLOWED_HOSTS:-}
+      - RP_ID=${RP_ID:-}
     volumes:
       - ./data:/app/data
       - ./storage:/app/storage

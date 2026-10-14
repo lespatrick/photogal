@@ -204,7 +204,9 @@ export default function ClientGalleryPage({
         throw new Error(data.error || 'Błąd zapisu wyboru');
       }
 
-      if (data.isSelected !== undefined) {
+      if (Array.isArray(data.selectedIds)) {
+        setSelectedIds(new Set(data.selectedIds));
+      } else if (data.isSelected !== undefined) {
         setSelectedIds((prev) => {
           const next = new Set(prev);
           if (data.isSelected) {

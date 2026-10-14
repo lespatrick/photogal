@@ -82,6 +82,7 @@ export default function GalleryManagementPage({
   const [editMax, setEditMax] = useState<number | ''>(0);
   const [editAllowZip, setEditAllowZip] = useState(false);
   const [editWelcome, setEditWelcome] = useState('');
+  const [editStatus, setEditStatus] = useState<'draft' | 'active' | 'submitted' | 'archived'>('active');
 
   // Delete photo confirmation
   const [photoToDelete, setPhotoToDelete] = useState<{ id: string; filename: string } | null>(null);
@@ -135,6 +136,7 @@ export default function GalleryManagementPage({
       setEditMax(data.gallery.max_selections);
       setEditAllowZip(data.gallery.allow_zip_download === 1);
       setEditWelcome(data.gallery.welcome_text || '');
+      setEditStatus(data.gallery.status || 'active');
     } catch {
       toast('Błąd ładowania danych sesji', 'error');
     } finally {
@@ -253,6 +255,7 @@ export default function GalleryManagementPage({
           max_selections: editMax || 0,
           allow_zip_download: editAllowZip ? 1 : 0,
           welcome_text: editWelcome,
+          status: editStatus,
         }),
       });
 
@@ -773,6 +776,20 @@ export default function GalleryManagementPage({
                     min={0}
                   />
                 </div>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Status galerii</label>
+                <select
+                  className="form-input"
+                  value={editStatus}
+                  onChange={(e) => setEditStatus(e.target.value as any)}
+                >
+                  <option value="active">Aktywna (klient może wybierać zdjęcia)</option>
+                  <option value="submitted">Przesłana (selekcja zatwierdzona przez klienta)</option>
+                  <option value="archived">Zarchiwizowana (ukryta przed klientem)</option>
+                  <option value="draft">Szkic (niewidoczna)</option>
+                </select>
               </div>
 
               <div className="form-group">

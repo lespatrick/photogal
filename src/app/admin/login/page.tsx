@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowRight, Fingerprint } from 'lucide-react';
 import { startAuthentication } from '@simplewebauthn/browser';
@@ -23,6 +23,17 @@ export default function AdminLoginPage() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [passkeyLoading, setPasskeyLoading] = useState(false);
+
+  useEffect(() => {
+    fetch('/api/admin/login')
+      .then((res) => parseJsonResponse(res))
+      .then((data) => {
+        if (data.authenticated) {
+          router.replace('/admin');
+        }
+      })
+      .catch(() => {});
+  }, [router]);
 
   const handlePasswordLogin = async (e: React.FormEvent) => {
     e.preventDefault();

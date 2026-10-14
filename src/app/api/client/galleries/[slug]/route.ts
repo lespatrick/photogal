@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import db from '@/lib/db';
+import db, { parseSqliteDate } from '@/lib/db';
 import { verifyClientToken, extractClientToken } from '@/lib/auth';
 
 export async function GET(
@@ -13,7 +13,7 @@ export async function GET(
       SELECT 
         g.id, g.slug, g.title, g.shoot_date, g.welcome_text,
         g.max_selections, g.allow_zip_download, g.status,
-        g.submitted_at, g.client_notes, g.pin_version,
+        g.submitted_at, g.client_notes, g.pin_version, g.pin_locked_until,
         (SELECT thumb_path FROM photos p WHERE p.id = g.cover_photo_id) AS cover_thumb,
         (SELECT thumb_path FROM photos p WHERE p.gallery_id = g.id ORDER BY p.order_index ASC, p.created_at ASC LIMIT 1) AS fallback_thumb
       FROM galleries g
@@ -22,6 +22,24 @@ export async function GET(
 
     if (!gallery || gallery.status === 'draft') {
       return NextResponse.json({ error: 'Galeria nie istnieje' }, { status: 404 });
+    }
+
+    if (gallery.status === 'archived') {
+      return NextResponse.json({ error: 'Galeria została zarchiwizowana i nie jest już dostępna.' }, { status: 403 });
+    }
+
+    if (gallery.pin_locked_until) {
+      const lockExpiry = parseSqliteDate(gallery.pin_locked_until).getTime();
+      if (lockExpiry > Date.now()) {
+        const remainingMinutes = Math.max(1, Math.ceil((lockExpiry - Date.now()) / (1000 * 60)));
+        return NextResponse.json({
+          error: remainingMinutes > 1000
+            ? 'Galeria została zablokowana ze względów bezpieczeństwa po wielokrotnych błędnych próbach wprowadzenia PIN. Skontaktuj się z fotografem w celu odblokowania.'
+            : `Galeria została zablokowana ze względów bezpieczeństwa. Spróbuj ponownie za ${remainingMinutes} min lub skontaktuj się z fotografem.`,
+          locked: true,
+          unlocked: false,
+        }, { status: 423 });
+      }
     }
 
     const token = extractClientToken(req, gallery.id);

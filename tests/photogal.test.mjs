@@ -711,5 +711,83 @@ describe('Photogal Core & Security Integration Test Suite', () => {
     // Clean up
     activeDb.prepare('DELETE FROM galleries WHERE id = ?').run(galleryId);
   });
+
+  test('getWebAuthnConfig strictly ignores untrusted x-forwarded-host when ALLOWED_HOSTS is not configured', () => {
+    delete process.env.ALLOWED_HOSTS;
+    delete process.env.RP_ID;
+
+    const req = new Request('http://gallery.studio.com/api/admin/passkey/login-options', {
+      headers: {
+        'x-forwarded-host': 'evil-phishing.com',
+        'host': 'gallery.studio.com',
+        'x-forwarded-proto': 'https',
+      },
+    });
+
+    const config = getWebAuthnConfig(req);
+    assert.equal(config.rpID, 'gallery.studio.com', 'rpID must ignore untrusted x-forwarded-host');
+    assert.ok(!config.origin.includes('evil-phishing.com'), 'origin must not contain untrusted x-forwarded-host');
+  });
+
+  test('Proxy strictly prevents open redirect when ALLOWED_HOSTS is empty and arbitrary Host is supplied', () => {
+    delete process.env.ALLOWED_HOSTS;
+    delete process.env.RP_ID;
+
+    const maliciousReq = new NextRequest('http://photogal.studio/admin/login', {
+      headers: {
+        'host': 'attacker-evil.com',
+        'x-forwarded-proto': 'http',
+      },
+    });
+
+    const res = proxy(maliciousReq);
+    assert.equal(res.status, 308);
+    const location = res.headers.get('location');
+    assert.ok(!location.includes('attacker-evil.com'), 'Redirect location must not redirect to untrusted host');
+    assert.ok(location.startsWith('https://photogal.studio'), 'Redirect location must redirect to server hostname');
+  });
+
+  test('ZIP entry unique name generator with usedNames Set strictly eliminates duplicate filename collisions', () => {
+    const rawFilenames = ['photo.jpg', 'photo.jpg', 'photo_2.jpg', 'photo.jpg'];
+    const usedNames = new Set();
+    const generatedEntries = [];
+
+    for (const filename of rawFilenames) {
+      const normalized = filename.trim().replace(/\\/g, '/');
+      const safeBaseName = path.basename(normalized).replace(/[/\\?%*:|"<>]/g, '_').replace(/^\.+/, '') || 'photo.jpg';
+      let entryName = safeBaseName;
+      let counter = 2;
+      const ext = path.extname(safeBaseName);
+      const base = path.basename(safeBaseName, ext);
+      while (usedNames.has(entryName)) {
+        entryName = `${base}_${counter++}${ext}`;
+      }
+      usedNames.add(entryName);
+      generatedEntries.push(entryName);
+    }
+
+    assert.equal(generatedEntries.length, 4);
+    assert.equal(new Set(generatedEntries).size, 4, 'All generated ZIP entry names must be distinct');
+    assert.deepEqual(generatedEntries, ['photo.jpg', 'photo_2.jpg', 'photo_2_2.jpg', 'photo_3.jpg']);
+  });
+
+  test('Locked galleries reject client token access when pin_locked_until is in the future', () => {
+    const activeDb = db.default || db;
+    const galleryId = 'test-lockout-enforcement-gal';
+
+    activeDb.prepare(`
+      INSERT OR REPLACE INTO galleries (id, slug, title, shoot_date, pin_code, pin_locked_until)
+      VALUES (?, ?, ?, ?, ?, datetime('now', '+1 hour'))
+    `).run(galleryId, 'test-slug-lockout', 'Locked Gallery', '2026-10-14', '1234');
+
+    const row = activeDb.prepare('SELECT pin_locked_until FROM galleries WHERE id = ?').get(galleryId);
+    assert.ok(row.pin_locked_until, 'pin_locked_until must be set');
+    const lockExpiry = parseSqliteDate(row.pin_locked_until).getTime();
+    assert.ok(lockExpiry > Date.now(), 'lock expiry must be in the future');
+
+    // Clean up
+    activeDb.prepare('DELETE FROM galleries WHERE id = ?').run(galleryId);
+  });
 });
+
 

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
-import db from '@/lib/db';
+import db, { parseSqliteDate } from '@/lib/db';
 import { verifyClientToken, extractClientToken } from '@/lib/auth';
 
 export async function POST(
@@ -10,15 +10,26 @@ export async function POST(
   const { slug } = await params;
 
   try {
-    const gallery = db.prepare('SELECT id, status, max_selections, pin_version FROM galleries WHERE slug = ?').get(slug) as {
+    const gallery = db.prepare('SELECT id, status, max_selections, pin_version, pin_locked_until FROM galleries WHERE slug = ?').get(slug) as {
       id: string;
       status: string;
       max_selections: number;
       pin_version?: number;
+      pin_locked_until?: string | null;
     } | undefined;
 
     if (!gallery || gallery.status === 'draft') {
       return NextResponse.json({ error: 'Galeria nie istnieje' }, { status: 404 });
+    }
+
+    if (gallery.pin_locked_until) {
+      const lockExpiry = parseSqliteDate(gallery.pin_locked_until).getTime();
+      if (lockExpiry > Date.now()) {
+        return NextResponse.json({
+          error: 'Galeria została zablokowana ze względów bezpieczeństwa. Skontaktuj się z fotografem.',
+          locked: true,
+        }, { status: 423 });
+      }
     }
 
     const token = extractClientToken(req, gallery.id);

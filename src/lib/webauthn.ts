@@ -6,7 +6,16 @@ export function getWebAuthnConfig(req: Request) {
   const envOrigin = process.env.RP_ORIGIN;
 
   const url = new URL(req.url);
-  const rawHost = req.headers.get('x-forwarded-host') || req.headers.get('host') || url.host;
+  const allowedHosts = [
+    ...(process.env.ALLOWED_HOSTS ? process.env.ALLOWED_HOSTS.split(',').map((h) => h.split(':')[0].trim().toLowerCase()) : []),
+    ...(process.env.RP_ID ? [process.env.RP_ID.split(':')[0].trim().toLowerCase()] : []),
+  ].filter(Boolean);
+
+  const rawForwardedHost = req.headers.get('x-forwarded-host');
+  const forwardedHostCandidate = rawForwardedHost ? rawForwardedHost.split(':')[0].trim().toLowerCase() : null;
+  const isTrustedForwardedHost = forwardedHostCandidate && allowedHosts.includes(forwardedHostCandidate);
+
+  const rawHost = (isTrustedForwardedHost ? rawForwardedHost : (req.headers.get('host') || url.host)) || 'localhost';
   const safeHost = rawHost.replace(/[^a-zA-Z0-9.:_-]/g, '').trim();
   const rawProto = req.headers.get('x-forwarded-proto') || url.protocol.replace(':', '');
   const proto = rawProto === 'https' || (process.env.NODE_ENV === 'production') ? 'https' : 'http';
@@ -23,14 +32,14 @@ export function getWebAuthnConfig(req: Request) {
 
   const isLoopback = hostname === 'localhost' || hostname === '127.0.0.1';
 
-  const allowedHosts = [
-    ...(process.env.ALLOWED_HOSTS ? process.env.ALLOWED_HOSTS.split(',').map((h) => h.split(':')[0].trim().toLowerCase()) : []),
-    ...(process.env.RP_ID ? [process.env.RP_ID.split(':')[0].trim().toLowerCase()] : []),
-  ].filter(Boolean);
-
   if (allowedHosts.length > 0 && !isLoopback && !allowedHosts.includes(hostname.toLowerCase())) {
     hostname = allowedHosts[0];
     port = ''; // Invalidate any untrusted port from the rejected host
+  } else if (allowedHosts.length === 0 && !isLoopback) {
+    const isValidHostname = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$/.test(hostname.toLowerCase());
+    if (!isValidHostname) {
+      hostname = url.hostname.toLowerCase();
+    }
   }
 
   const cleanEnvRpId = envRpId ? envRpId.split(':')[0].trim().toLowerCase() : undefined;

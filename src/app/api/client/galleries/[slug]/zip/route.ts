@@ -3,7 +3,7 @@ import { ZipArchive } from 'archiver';
 import path from 'path';
 import fs from 'fs';
 import { PassThrough, Readable } from 'stream';
-import db from '@/lib/db';
+import db, { parseSqliteDate } from '@/lib/db';
 import { verifyClientToken, extractClientToken } from '@/lib/auth';
 import { resolveSafeStoragePath } from '@/lib/storage';
 
@@ -16,10 +16,21 @@ export async function GET(
   const { slug } = await params;
 
   try {
-    const gallery = db.prepare('SELECT id, title, allow_zip_download, status, pin_version FROM galleries WHERE slug = ?').get(slug) as any;
+    const gallery = db.prepare('SELECT id, title, allow_zip_download, status, pin_version, pin_locked_until FROM galleries WHERE slug = ?').get(slug) as any;
 
     if (!gallery || gallery.status === 'draft') {
       return new NextResponse('Galeria nie istnieje', { status: 404 });
+    }
+
+    if (gallery.status === 'archived') {
+      return new NextResponse('Galeria została zarchiwizowana', { status: 403 });
+    }
+
+    if (gallery.pin_locked_until) {
+      const lockExpiry = parseSqliteDate(gallery.pin_locked_until).getTime();
+      if (lockExpiry > Date.now()) {
+        return new NextResponse('Galeria zablokowana ze względów bezpieczeństwa', { status: 423 });
+      }
     }
 
     const token = extractClientToken(req, gallery.id);
@@ -83,20 +94,20 @@ export async function GET(
 
     archive.pipe(passThrough);
 
-    const nameTracker = new Map<string, number>();
+    const usedNames = new Set<string>();
     for (const p of photos) {
       const fullPath = resolveSafeStoragePath(p.original_path);
       if (fullPath && fs.existsSync(fullPath)) {
         const normalized = p.filename.trim().replace(/\\/g, '/');
         const safeBaseName = path.basename(normalized).replace(/[/\\?%*:|"<>]/g, '_').replace(/^\.+/, '') || 'photo.jpg';
-        const count = nameTracker.get(safeBaseName) || 0;
         let entryName = safeBaseName;
-        if (count > 0) {
-          const ext = path.extname(safeBaseName);
-          const base = path.basename(safeBaseName, ext);
-          entryName = `${base}_${count + 1}${ext}`;
+        let counter = 2;
+        const ext = path.extname(safeBaseName);
+        const base = path.basename(safeBaseName, ext);
+        while (usedNames.has(entryName)) {
+          entryName = `${base}_${counter++}${ext}`;
         }
-        nameTracker.set(safeBaseName, count + 1);
+        usedNames.add(entryName);
         archive.file(fullPath, { name: entryName });
       }
     }
