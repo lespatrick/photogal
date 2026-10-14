@@ -211,6 +211,7 @@ export default function GalleryManagementPage({
       if (!res.ok) throw new Error('Błąd usuwania');
       toast('Usunięto zdjęcie', 'info');
       setPhotos((prev) => prev.filter((p) => p.id !== photoToDelete.id));
+      setGallery((prev) => (prev && prev.cover_photo_id === photoToDelete.id ? { ...prev, cover_photo_id: undefined } : prev));
       setPhotoToDelete(null);
     } catch {
       toast('Błąd usuwania zdjęcia', 'error');
@@ -270,18 +271,24 @@ export default function GalleryManagementPage({
   };
 
   const copyToClipboard = (text: string, formatName: string) => {
-    navigator.clipboard.writeText(text);
-    setCopiedFormat(formatName);
-    toast(`Skopiowano (${formatName})`, 'success');
-    setTimeout(() => setCopiedFormat(null), 2000);
+    navigator.clipboard?.writeText(text).then(() => {
+      setCopiedFormat(formatName);
+      toast(`Skopiowano (${formatName})`, 'success');
+      setTimeout(() => setCopiedFormat(null), 2000);
+    }).catch(() => {
+      toast('Nie udało się skopiować do schowka', 'error');
+    });
   };
 
   const copyClientShare = () => {
     if (!gallery) return;
     const origin = typeof window !== 'undefined' ? window.location.origin : '';
     const shareText = `Link do galerii: ${origin}/g/${gallery.slug}\nPIN: ${gallery.pin_code}`;
-    navigator.clipboard.writeText(shareText);
-    toast('Skopiowano link i PIN', 'success');
+    navigator.clipboard?.writeText(shareText).then(() => {
+      toast('Skopiowano link i PIN', 'success');
+    }).catch(() => {
+      toast('Nie udało się skopiować linku', 'error');
+    });
   };
 
   if (loading || !gallery) {

@@ -152,15 +152,17 @@ export default function ClientGalleryPage({
     const token = getClientToken();
     if (!token) return;
 
-    const isCurrentlySelected = selectedIds.has(photoId);
-    const nextSelected = new Set(selectedIds);
-
-    if (isCurrentlySelected) {
-      nextSelected.delete(photoId);
-    } else {
-      nextSelected.add(photoId);
-    }
-    setSelectedIds(nextSelected);
+    let isCurrentlySelected = false;
+    setSelectedIds((prev) => {
+      isCurrentlySelected = prev.has(photoId);
+      const next = new Set(prev);
+      if (isCurrentlySelected) {
+        next.delete(photoId);
+      } else {
+        next.add(photoId);
+      }
+      return next;
+    });
 
     try {
       const res = await fetch(`/api/client/galleries/${slug}/selections`, {
@@ -177,11 +179,19 @@ export default function ClientGalleryPage({
 
       const data = await parseJsonResponse(res);
       if (!res.ok) {
-        setSelectedIds(selectedIds);
+        // Rollback this toggle
+        setSelectedIds((prev) => {
+          const next = new Set(prev);
+          if (isCurrentlySelected) next.add(photoId);
+          else next.delete(photoId);
+          return next;
+        });
         throw new Error(data.error || 'Błąd zapisu wyboru');
       }
 
-      setSelectedIds(new Set(data.selectedIds));
+      if (Array.isArray(data.selectedIds)) {
+        setSelectedIds(new Set(data.selectedIds));
+      }
     } catch (err: any) {
       toast(err.message, 'error');
     }
@@ -196,11 +206,17 @@ export default function ClientGalleryPage({
       : photos;
 
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (currentList.length === 0) {
+        setLightboxIndex(null);
+        return;
+      }
       if (e.key === 'Escape') {
         setLightboxIndex(null);
       } else if (e.key === 'ArrowRight') {
+        if (currentList.length <= 1) return;
         setLightboxIndex((prev) => (prev !== null && prev < currentList.length - 1 ? prev + 1 : 0));
       } else if (e.key === 'ArrowLeft') {
+        if (currentList.length <= 1) return;
         setLightboxIndex((prev) => (prev !== null && prev > 0 ? prev - 1 : currentList.length - 1));
       } else if (e.key === ' ' || e.key === 'f') {
         e.preventDefault();
@@ -228,6 +244,12 @@ export default function ClientGalleryPage({
     const currentList = filterMode === 'selected'
       ? photos.filter((p) => selectedIds.has(p.id))
       : photos;
+
+    if (currentList.length <= 1) {
+      touchStartX.current = null;
+      touchEndX.current = null;
+      return;
+    }
 
     if (diff > 50) {
       setLightboxIndex((prev) => (prev !== null && prev < currentList.length - 1 ? prev + 1 : 0));
@@ -347,7 +369,19 @@ export default function ClientGalleryPage({
     ? photos.filter((p) => selectedIds.has(p.id))
     : photos;
 
-  const currentLightboxPhoto = lightboxIndex !== null ? currentDisplayPhotos[lightboxIndex] : null;
+  useEffect(() => {
+    if (lightboxIndex !== null) {
+      if (currentDisplayPhotos.length === 0) {
+        setLightboxIndex(null);
+      } else if (lightboxIndex >= currentDisplayPhotos.length) {
+        setLightboxIndex(Math.max(0, currentDisplayPhotos.length - 1));
+      }
+    }
+  }, [lightboxIndex, currentDisplayPhotos.length]);
+
+  const currentLightboxPhoto = lightboxIndex !== null && lightboxIndex < currentDisplayPhotos.length
+    ? currentDisplayPhotos[lightboxIndex]
+    : null;
 
   return (
     <div className="app-container" style={{ paddingBottom: '7rem' }}>
@@ -589,7 +623,7 @@ export default function ClientGalleryPage({
             <button
               onClick={() =>
                 setLightboxIndex((prev) =>
-                  prev !== null && prev > 0 ? prev - 1 : currentDisplayPhotos.length - 1
+                  prev !== null && prev > 0 ? prev - 1 : Math.max(0, currentDisplayPhotos.length - 1)
                 )
               }
               className="lightbox-nav-btn lightbox-prev"

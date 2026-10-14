@@ -17,8 +17,6 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
-  maximumScale: 1,
-  userScalable: false,
   themeColor: '#0a0b0e',
 };
 
@@ -31,6 +29,11 @@ export default function RootLayout({
     <html lang="pl" suppressHydrationWarning>
       <head>
         <link rel="icon" href="/icon-192.png" />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `try{var t=localStorage.getItem('photogal_theme');if(t){document.documentElement.setAttribute('data-theme',t);}}catch(e){}`,
+          }}
+        />
       </head>
       <body>
         <ThemeProvider>

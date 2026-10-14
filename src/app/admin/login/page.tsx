@@ -7,6 +7,15 @@ import { startAuthentication } from '@simplewebauthn/browser';
 import { ThemeToggle } from '@/components/ThemeProvider';
 import { useToast } from '@/components/ToastProvider';
 
+async function parseJsonResponse(res: Response): Promise<any> {
+  const text = await res.text();
+  try {
+    return text ? JSON.parse(text) : {};
+  } catch {
+    return { error: text || 'Błąd odpowiedzi serwera' };
+  }
+}
+
 export default function AdminLoginPage() {
   const router = useRouter();
   const { toast } = useToast();
@@ -19,9 +28,9 @@ export default function AdminLoginPage() {
   useEffect(() => {
     // Check if any passkeys are registered
     fetch('/api/admin/passkey/login-options')
-      .then((res) => res.json())
+      .then(parseJsonResponse)
       .then((data) => {
-        if (data.hasRegisteredPasskeys) {
+        if (data?.hasRegisteredPasskeys) {
           setHasPasskeys(true);
         }
       })
@@ -39,13 +48,7 @@ export default function AdminLoginPage() {
         body: JSON.stringify({ username, password }),
       });
 
-      const text = await res.text();
-      let data: any = {};
-      try {
-        data = text ? JSON.parse(text) : {};
-      } catch {
-        throw new Error(text || 'Błąd odpowiedzi serwera');
-      }
+      const data = await parseJsonResponse(res);
 
       if (!res.ok) {
         throw new Error(data.error || 'Błąd logowania');
@@ -65,7 +68,7 @@ export default function AdminLoginPage() {
     try {
       // 1. Get options from server
       const optRes = await fetch('/api/admin/passkey/login-options');
-      const optData = await optRes.json();
+      const optData = await parseJsonResponse(optRes);
       if (!optRes.ok) throw new Error(optData.error || 'Błąd pobierania opcji logowania');
 
       // 2. Trigger native WebAuthn biometric prompt (Touch ID / Face ID)
@@ -83,7 +86,7 @@ export default function AdminLoginPage() {
         }),
       });
 
-      const verifyData = await verifyRes.json();
+      const verifyData = await parseJsonResponse(verifyRes);
       if (!verifyRes.ok) throw new Error(verifyData.error || 'Weryfikacja biometryczna nie powiodła się');
 
       toast('Zalogowano pomyślnie za pomocą Passkey!', 'success');

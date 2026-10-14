@@ -139,7 +139,7 @@ export default function AdminDashboardPage() {
     setRegisteringPasskey(true);
     try {
       const optRes = await fetch('/api/admin/passkey/register-options');
-      const options = await optRes.json();
+      const options = await parseJsonResponse(optRes);
       if (!optRes.ok) throw new Error(options.error || 'Błąd generowania opcji');
 
       const registrationResponse = await startRegistration({ optionsJSON: options });
@@ -154,7 +154,7 @@ export default function AdminDashboardPage() {
         }),
       });
 
-      const verifyData = await verifyRes.json();
+      const verifyData = await parseJsonResponse(verifyRes);
       if (!verifyRes.ok) throw new Error(verifyData.error || 'Błąd weryfikacji');
 
       toast('Klucz Passkey dodany do konta!', 'success');

@@ -12,8 +12,8 @@ services:
       - NODE_ENV=production
       - PORT=3000
       - HOSTNAME=0.0.0.0
-      - ADMIN_PASSWORD=admin123
-      - AUTH_SECRET=photogal-production-secret-change-in-production-key-32b
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin123}
+      - AUTH_SECRET=${AUTH_SECRET:-}
     volumes:
       - ./data:/app/data
       - ./storage:/app/storage
