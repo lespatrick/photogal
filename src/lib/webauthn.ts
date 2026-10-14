@@ -41,13 +41,25 @@ export function saveChallenge(challenge: string, userType: 'admin_register' | 'a
 
 export function consumeChallenge(challenge: string, userType: 'admin_register' | 'admin_login'): boolean {
   const now = Date.now();
-  const row = db.prepare(`
-    SELECT id FROM auth_challenges 
-    WHERE challenge = ? AND user_type = ? AND expires_at >= ?
-  `).get(challenge, userType, now);
+  try {
+    const deleted = db.prepare(`
+      DELETE FROM auth_challenges 
+      WHERE challenge = ? AND user_type = ? AND expires_at >= ?
+      RETURNING id
+    `).get(challenge, userType, now);
 
-  if (!row) return false;
-
-  db.prepare('DELETE FROM auth_challenges WHERE id = ?').run((row as any).id);
-  return true;
+    return !!deleted;
+  } catch {
+    // Fallback for environments where RETURNING might fail
+    const tx = db.transaction(() => {
+      const row = db.prepare(`
+        SELECT id FROM auth_challenges 
+        WHERE challenge = ? AND user_type = ? AND expires_at >= ?
+      `).get(challenge, userType, now);
+      if (!row) return false;
+      db.prepare('DELETE FROM auth_challenges WHERE id = ?').run((row as any).id);
+      return true;
+    });
+    return tx.immediate();
+  }
 }

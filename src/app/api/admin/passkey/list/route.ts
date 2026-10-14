@@ -24,7 +24,14 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: 'Brak autoryzacji' }, { status: 401 });
   }
 
-  const { id } = await req.json();
+  let id: string | undefined;
+  try {
+    const body = await req.json();
+    id = body?.id;
+  } catch {
+    return NextResponse.json({ error: 'Nieprawidłowe dane żądania' }, { status: 400 });
+  }
+
   if (!id) {
     return NextResponse.json({ error: 'Brak ID klucza' }, { status: 400 });
   }

@@ -27,10 +27,16 @@ export async function GET(req: NextRequest) {
     userName: admin.username,
     userDisplayName: `Fotograf (${admin.username})`,
     attestationType: 'none',
-    excludeCredentials: existingAuthenticators.map((auth) => ({
-      id: auth.id,
-      transports: auth.transports ? JSON.parse(auth.transports) : undefined,
-    })),
+    excludeCredentials: existingAuthenticators.map((auth) => {
+      let transports: any = undefined;
+      if (auth.transports) {
+        try { transports = JSON.parse(auth.transports); } catch {}
+      }
+      return {
+        id: auth.id,
+        transports,
+      };
+    }),
     authenticatorSelection: {
       residentKey: 'preferred',
       userVerification: 'preferred',

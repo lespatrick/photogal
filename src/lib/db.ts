@@ -18,6 +18,18 @@ db.pragma('journal_mode = WAL');
 db.pragma('busy_timeout = 5000');
 db.pragma('foreign_keys = ON');
 
+/**
+ * Safely parse SQLite datetime strings (stored in UTC as 'YYYY-MM-DD HH:MM:SS')
+ * into JavaScript Date objects without local timezone skew.
+ */
+export function parseSqliteDate(sqliteDate: string): Date {
+  if (!sqliteDate) return new Date(NaN);
+  const utcString = sqliteDate.includes('T')
+    ? (sqliteDate.endsWith('Z') ? sqliteDate : sqliteDate + 'Z')
+    : sqliteDate.replace(' ', 'T') + 'Z';
+  return new Date(utcString);
+}
+
 export function initDatabase() {
   db.exec(`
     CREATE TABLE IF NOT EXISTS admins (
@@ -112,6 +124,7 @@ export function initDatabase() {
     CREATE INDEX IF NOT EXISTS idx_selections_photo ON selections(photo_id);
     CREATE INDEX IF NOT EXISTS idx_authenticators_admin ON authenticators(admin_id);
     CREATE INDEX IF NOT EXISTS idx_pin_attempts_lookup ON pin_attempts(gallery_id, ip_hash, attempted_at);
+    CREATE INDEX IF NOT EXISTS idx_auth_challenges_lookup ON auth_challenges(challenge, user_type);
   `);
 
   // Safe migrations
@@ -141,7 +154,7 @@ export function initDatabase() {
         'admin',
         passwordHash
       );
-      console.log('Initialized default admin account: user=admin, pass=' + defaultPassword);
+      console.log('Initialized default admin account: username=admin');
     }
   } catch {
     // Ignore concurrency race conditions during Next.js parallel route compilation

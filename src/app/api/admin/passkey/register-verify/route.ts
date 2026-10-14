@@ -10,9 +10,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Brak autoryzacji' }, { status: 401 });
   }
 
+  let response: any;
+  let challenge: string | undefined;
+  let friendlyName: string | undefined;
   try {
-    const { response, challenge, friendlyName } = await req.json();
+    const body = await req.json();
+    response = body?.response;
+    challenge = body?.challenge;
+    friendlyName = body?.friendlyName;
+  } catch {
+    return NextResponse.json({ error: 'Nieprawidłowe dane żądania' }, { status: 400 });
+  }
 
+  try {
     if (!response || !challenge) {
       return NextResponse.json({ error: 'Brak wymaganych danych weryfikacji' }, { status: 400 });
     }
