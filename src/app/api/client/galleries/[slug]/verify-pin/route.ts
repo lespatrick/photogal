@@ -140,7 +140,7 @@ export async function POST(
         };
       }
 
-      // On success: record successful attempt & clear all failed attempts for this gallery
+      // On success: record successful attempt & clear failed attempts for this specific IP
       db.prepare(`
         INSERT INTO pin_attempts (id, gallery_id, ip_hash, success)
         VALUES (?, ?, ?, 1)
@@ -148,8 +148,8 @@ export async function POST(
 
       db.prepare(`
         DELETE FROM pin_attempts 
-        WHERE gallery_id = ? AND success = 0
-      `).run(gallery.id);
+        WHERE gallery_id = ? AND ip_hash = ? AND success = 0
+      `).run(gallery.id, ipHash);
 
       return {
         status: 200,

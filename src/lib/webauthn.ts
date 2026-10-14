@@ -24,8 +24,8 @@ export function getWebAuthnConfig(req: Request) {
   const isLoopback = hostname === 'localhost' || hostname === '127.0.0.1';
 
   const allowedHosts = [
-    ...(process.env.ALLOWED_HOSTS ? process.env.ALLOWED_HOSTS.split(',').map((h) => h.trim().toLowerCase()) : []),
-    ...(process.env.RP_ID ? [process.env.RP_ID.trim().toLowerCase()] : []),
+    ...(process.env.ALLOWED_HOSTS ? process.env.ALLOWED_HOSTS.split(',').map((h) => h.split(':')[0].trim().toLowerCase()) : []),
+    ...(process.env.RP_ID ? [process.env.RP_ID.split(':')[0].trim().toLowerCase()] : []),
   ].filter(Boolean);
 
   if (allowedHosts.length > 0 && !isLoopback && !allowedHosts.includes(hostname.toLowerCase())) {
@@ -33,7 +33,8 @@ export function getWebAuthnConfig(req: Request) {
     port = ''; // Invalidate any untrusted port from the rejected host
   }
 
-  const rpID = envRpId || hostname;
+  const cleanEnvRpId = envRpId ? envRpId.split(':')[0].trim().toLowerCase() : undefined;
+  const rpID = cleanEnvRpId || hostname;
   const origin = envOrigin || `${proto}://${hostname}${port}`;
   const rpName = 'photogal';
 

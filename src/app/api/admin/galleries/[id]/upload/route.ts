@@ -22,6 +22,11 @@ export async function POST(
     }
     const actualId = gallery.id;
 
+    const contentLength = req.headers.get('content-length');
+    if (contentLength && parseInt(contentLength, 10) > 310 * 1024 * 1024) {
+      return NextResponse.json({ error: 'Łączny rozmiar żądania przekracza maksymalny limit 300MB' }, { status: 413 });
+    }
+
     const formData = await req.formData();
     const files = formData.getAll('files') as File[];
 

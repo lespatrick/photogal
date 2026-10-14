@@ -108,12 +108,13 @@ export default function GalleryManagementPage({
   const handleResetSecurity = async () => {
     try {
       const res = await fetch(`/api/admin/galleries/${galleryId}/security`, { method: 'POST' });
-      if (!res.ok) throw new Error('Błąd');
-      toast('Blokada PIN zdjęta, historia prób wyczyszczona', 'success');
+      const data = await parseJsonResponse(res);
+      if (!res.ok) throw new Error(data.error || 'Błąd resetowania blokady');
+      toast(data.message || 'Blokada PIN zdjęta, historia prób wyczyszczona', 'success');
       fetchSecurityInfo();
       fetchGalleryData();
-    } catch {
-      toast('Błąd resetowania blokady', 'error');
+    } catch (err: any) {
+      toast(err.message || 'Błąd resetowania blokady', 'error');
     }
   };
 
@@ -211,13 +212,14 @@ export default function GalleryManagementPage({
       const res = await fetch(`/api/admin/galleries/${galleryId}/photos/${photoToDelete.id}`, {
         method: 'DELETE',
       });
-      if (!res.ok) throw new Error('Błąd usuwania');
+      const data = await parseJsonResponse(res);
+      if (!res.ok) throw new Error(data.error || 'Błąd usuwania');
       toast('Usunięto zdjęcie', 'info');
       setPhotos((prev) => prev.filter((p) => p.id !== photoToDelete.id));
       setGallery((prev) => (prev && prev.cover_photo_id === photoToDelete.id ? { ...prev, cover_photo_id: undefined } : prev));
       setPhotoToDelete(null);
-    } catch {
-      toast('Błąd usuwania zdjęcia', 'error');
+    } catch (err: any) {
+      toast(err.message || 'Błąd usuwania zdjęcia', 'error');
     } finally {
       setDeletingPhoto(false);
     }
@@ -230,11 +232,12 @@ export default function GalleryManagementPage({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ cover_photo_id: photoId }),
       });
-      if (!res.ok) throw new Error('Błąd ustawiania okładki');
+      const data = await parseJsonResponse(res);
+      if (!res.ok) throw new Error(data.error || 'Błąd ustawiania okładki');
       toast('Ustawiono jako okładkę', 'success');
       setGallery((prev) => (prev ? { ...prev, cover_photo_id: photoId } : null));
-    } catch {
-      toast('Błąd zapisu', 'error');
+    } catch (err: any) {
+      toast(err.message || 'Błąd zapisu', 'error');
     }
   };
 
@@ -253,12 +256,13 @@ export default function GalleryManagementPage({
         }),
       });
 
-      if (!res.ok) throw new Error('Błąd zapisu');
+      const data = await parseJsonResponse(res);
+      if (!res.ok) throw new Error(data.error || 'Błąd zapisu');
       toast('Zaktualizowano ustawienia', 'success');
       setSettingsOpen(false);
       fetchGalleryData();
-    } catch {
-      toast('Błąd zapisu zmian', 'error');
+    } catch (err: any) {
+      toast(err.message || 'Błąd zapisu zmian', 'error');
     }
   };
 

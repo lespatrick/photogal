@@ -30,6 +30,7 @@ import {
   getFilePath,
   STORAGE_DIR,
 } from '../src/lib/storage';
+import { processAndSavePhoto } from '../src/lib/image';
 import { proxy } from '../src/proxy';
 import { NextRequest } from 'next/server';
 
@@ -645,6 +646,70 @@ describe('Photogal Core & Security Integration Test Suite', () => {
     assert.equal(pinRegex.test('pin-2026'), false, 'Text PIN must be rejected');
     assert.equal(pinRegex.test('12 34'), false, 'PIN with spaces must be rejected');
     assert.equal(pinRegex.test(''), false, 'Empty PIN must be rejected');
+  });
+
+  test('getWebAuthnConfig strips ports from ALLOWED_HOSTS and RP_ID to guarantee valid W3C rpID', () => {
+    process.env.ALLOWED_HOSTS = 'gallery.studio.com:8443, photos.local:3000';
+    process.env.RP_ID = 'studio.example.com:9443';
+    try {
+      const req = new Request('http://gallery.studio.com/api/admin/passkey/login-options', {
+        headers: {
+          'host': 'gallery.studio.com:8443',
+          'x-forwarded-proto': 'https',
+        },
+      });
+
+      const config = getWebAuthnConfig(req);
+      assert.equal(config.rpID.includes(':'), false, 'rpID must never contain port specification');
+      assert.equal(config.rpID, 'studio.example.com', 'RP_ID port must be stripped');
+    } finally {
+      delete process.env.ALLOWED_HOSTS;
+      delete process.env.RP_ID;
+    }
+  });
+
+  test('processAndSavePhoto strictly rejects non-raster formats such as SVG masquerading with .png extension', async () => {
+    const fakeSvg = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><circle cx="50" cy="50" r="40"/></svg>');
+    await assert.rejects(
+      async () => {
+        await processAndSavePhoto('test-gal-svg', 'vector_payload.png', fakeSvg);
+      },
+      /Plik nie jest prawidłowym obrazem rastrowym lub jest uszkodzony/,
+      'Must reject SVG files masquerading as PNG'
+    );
+  });
+
+  test('Scoped PIN attempt deletion on success preserves audit logs and failed attempts from other IPs', () => {
+    const activeDb = db.default || db;
+    const galleryId = 'test-audit-preservation-gal';
+    const attackerIpHash = 'attacker-hash-111';
+    const legitIpHash = 'legit-hash-222';
+
+    // Insert dummy gallery to satisfy foreign key constraint
+    activeDb.prepare(`
+      INSERT OR REPLACE INTO galleries (id, slug, title, shoot_date, pin_code)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(galleryId, 'test-slug-preservation', 'Test Gallery', '2026-10-14', '1234');
+
+    // Insert failed attempts for both attacker and legitimate client
+    activeDb.prepare('INSERT INTO pin_attempts (id, gallery_id, ip_hash, success) VALUES (?, ?, ?, 0)').run('att-1', galleryId, attackerIpHash);
+    activeDb.prepare('INSERT INTO pin_attempts (id, gallery_id, ip_hash, success) VALUES (?, ?, ?, 0)').run('att-2', galleryId, legitIpHash);
+
+    // Legitimate client succeeds -> deletes ONLY legitIpHash failures
+    activeDb.prepare(`
+      DELETE FROM pin_attempts 
+      WHERE gallery_id = ? AND ip_hash = ? AND success = 0
+    `).run(galleryId, legitIpHash);
+
+    // Attacker failed attempt must remain intact
+    const remainingAttacker = activeDb.prepare('SELECT COUNT(*) as count FROM pin_attempts WHERE gallery_id = ? AND ip_hash = ? AND success = 0').get(galleryId, attackerIpHash).count;
+    assert.equal(remainingAttacker, 1, 'Attacker failed attempt must be preserved for audit & lockout');
+
+    const remainingLegit = activeDb.prepare('SELECT COUNT(*) as count FROM pin_attempts WHERE gallery_id = ? AND ip_hash = ? AND success = 0').get(galleryId, legitIpHash).count;
+    assert.equal(remainingLegit, 0, 'Legitimate client failure count must be reset');
+
+    // Clean up
+    activeDb.prepare('DELETE FROM galleries WHERE id = ?').run(galleryId);
   });
 });
 

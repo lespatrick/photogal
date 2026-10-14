@@ -243,7 +243,7 @@ export default function AdminDashboardPage() {
 
       setModalOpen(false);
       setFormTitle('');
-      setFormPin(Math.floor(1000 + Math.random() * 9000).toString());
+      setFormPin(generateSecurePin());
       fetchGalleries();
       router.push(`/admin/galleries/${data.gallery.id}`);
     } catch (err: any) {
@@ -573,7 +573,7 @@ export default function AdminDashboardPage() {
                     <span>Kod PIN</span>
                     <button
                       type="button"
-                      onClick={() => setFormPin(Math.floor(1000 + Math.random() * 9000).toString())}
+                      onClick={() => setFormPin(generateSecurePin())}
                       style={{ color: 'var(--text-secondary)', fontSize: '0.72rem', textDecoration: 'underline' }}
                     >
                       Losuj
@@ -748,14 +748,14 @@ export default function AdminDashboardPage() {
                 </div>
 
                 <div className="form-group">
-                  <label className="form-label">Nowe hasło (min. 6 znaków)</label>
+                  <label className="form-label">Nowe hasło (min. 10 znaków)</label>
                   <input
                     type="password"
                     className="form-input"
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
                     required
-                    minLength={6}
+                    minLength={10}
                     placeholder="Wpisz nowe hasło"
                   />
                 </div>
@@ -768,7 +768,7 @@ export default function AdminDashboardPage() {
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     required
-                    minLength={6}
+                    minLength={10}
                     placeholder="Powtórz nowe hasło"
                   />
                 </div>

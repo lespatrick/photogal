@@ -15,6 +15,7 @@ export interface ProcessedPhotoResult {
 }
 
 const ALLOWED_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.heic', '.heif', '.tiff', '.tif', '.avif']);
+const ALLOWED_SHARP_FORMATS = new Set(['jpeg', 'png', 'webp', 'heif', 'tiff', 'avif']);
 
 export async function processAndSavePhoto(
   galleryId: string,
@@ -33,8 +34,8 @@ export async function processAndSavePhoto(
   const imagePipeline = sharp(buffer).rotate();
   const metadata = await imagePipeline.metadata();
 
-  if (!metadata.width || !metadata.height || !metadata.format) {
-    throw new Error('Plik nie jest prawidłowym obrazem lub jest uszkodzony.');
+  if (!metadata.width || !metadata.height || !metadata.format || !ALLOWED_SHARP_FORMATS.has(metadata.format)) {
+    throw new Error('Plik nie jest prawidłowym obrazem rastrowym lub jest uszkodzony.');
   }
 
   // Generate safe unique base name (case-insensitive extension stripping)

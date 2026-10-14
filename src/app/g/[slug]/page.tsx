@@ -101,6 +101,7 @@ export default function ClientGalleryPage({
         setSelectedIds(new Set(data.selectedIds || []));
       } else {
         setUnlocked(false);
+        localStorage.removeItem(`photogal_token_${slug}`);
         setGallery(data.gallery);
       }
     } catch {
@@ -186,6 +187,7 @@ export default function ClientGalleryPage({
       if (!res.ok) {
         if (res.status === 401 || res.status === 423) {
           setUnlocked(false);
+          localStorage.removeItem(`photogal_token_${slug}`);
           if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
             navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_MEDIA_CACHE' });
           }
@@ -318,6 +320,7 @@ export default function ClientGalleryPage({
       if (!res.ok) {
         if (res.status === 401 || res.status === 423) {
           setUnlocked(false);
+          localStorage.removeItem(`photogal_token_${slug}`);
           if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
             navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_MEDIA_CACHE' });
           }
