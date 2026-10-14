@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import db from '@/lib/db';
-import { verifyPassword, createAdminSession, destroyAdminSession, verifyAdminSession, getAuthSecret } from '@/lib/auth';
+import { verifyPassword, createAdminSession, destroyAdminSession, verifyAdminSession, getAuthSecret, extractClientIp } from '@/lib/auth';
 
 import crypto from 'crypto';
 
@@ -12,14 +12,7 @@ const MAX_MAP_ENTRIES = 10000;
 const DUMMY_HASH = '0123456789abcdef0123456789abcdef:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
 
 function getAdminIpHash(req: NextRequest): string {
-  const forwarded = req.headers.get('x-forwarded-for');
-  let ip = '127.0.0.1';
-  if (forwarded) {
-    const list = forwarded.split(',').map(s => s.trim()).filter(Boolean);
-    if (list.length > 0) ip = list[0].replace(/[^a-fA-F0-9:.]/g, '').substring(0, 45);
-  } else {
-    ip = (req.headers.get('x-real-ip') || req.headers.get('cf-connecting-ip') || '127.0.0.1').replace(/[^a-fA-F0-9:.]/g, '').substring(0, 45);
-  }
+  const ip = extractClientIp(req);
   return crypto.createHash('sha256').update(ip + getAuthSecret()).digest('hex');
 }
 
@@ -27,10 +20,12 @@ export async function POST(req: NextRequest) {
   try {
     const now = Date.now();
 
-    // Prune stale entries (> 15 min) to prevent unbounded memory growth
-    for (const [key, val] of failedAttemptsMap.entries()) {
-      if (now - val.lastAttempt > 15 * 60 * 1000) {
-        failedAttemptsMap.delete(key);
+    // Prune stale entries (> 15 min) when map grows
+    if (failedAttemptsMap.size > 100) {
+      for (const [key, val] of failedAttemptsMap.entries()) {
+        if (now - val.lastAttempt > 15 * 60 * 1000) {
+          failedAttemptsMap.delete(key);
+        }
       }
     }
 
@@ -49,7 +44,16 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const { username, password } = await req.json();
+    let username: string | undefined;
+    let password: string | undefined;
+    try {
+      const body = await req.json();
+      username = body?.username;
+      password = body?.password;
+    } catch {
+      return NextResponse.json({ error: 'Nieprawidłowe dane żądania' }, { status: 400 });
+    }
+
     if (!username || !password) {
       return NextResponse.json({ error: 'Nazwa użytkownika i hasło są wymagane.' }, { status: 400 });
     }

@@ -29,6 +29,10 @@ export async function POST(
       return NextResponse.json({ error: 'Brak plików do wgrania' }, { status: 400 });
     }
 
+    if (files.length > 50) {
+      return NextResponse.json({ error: 'Maksymalna wielkość pojedynczej paczki to 50 plików' }, { status: 400 });
+    }
+
     const currentMaxOrder = (db.prepare('SELECT MAX(order_index) as max_ord FROM photos WHERE gallery_id = ?').get(actualId) as any)?.max_ord || 0;
     let nextOrder = currentMaxOrder + 1;
 
@@ -37,6 +41,11 @@ export async function POST(
 
     for (const file of files) {
       try {
+        if (file.size > 50 * 1024 * 1024) {
+          errors.push({ filename: file.name, error: 'Plik przekracza maksymalny limit 50MB' });
+          continue;
+        }
+
         const originalName = file.name;
         const arrayBuffer = await file.arrayBuffer();
         const buffer = Buffer.from(arrayBuffer);
@@ -66,7 +75,7 @@ export async function POST(
 
         insertedPhotos.push({
           id: photoId,
-          gallery_id: id,
+          gallery_id: actualId,
           filename: processed.filename,
           original_path: processed.originalRelativePath,
           thumb_path: processed.thumbRelativePath,

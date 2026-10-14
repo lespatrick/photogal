@@ -9,10 +9,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Brak autoryzacji' }, { status: 401 });
   }
 
+  let currentPassword: string | undefined;
+  let newPassword: string | undefined;
+  let confirmPassword: string | undefined;
   try {
     const body = await req.json();
-    const { currentPassword, newPassword, confirmPassword } = body;
+    currentPassword = body?.currentPassword;
+    newPassword = body?.newPassword;
+    confirmPassword = body?.confirmPassword;
+  } catch {
+    return NextResponse.json({ error: 'Nieprawidłowe dane żądania' }, { status: 400 });
+  }
 
+  try {
     if (!currentPassword || !newPassword) {
       return NextResponse.json({ error: 'Wypełnij wszystkie wymagane pola' }, { status: 400 });
     }

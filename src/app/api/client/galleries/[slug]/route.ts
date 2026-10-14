@@ -20,7 +20,7 @@ export async function GET(
       WHERE g.slug = ?
     `).get(slug) as any;
 
-    if (!gallery) {
+    if (!gallery || gallery.status === 'draft') {
       return NextResponse.json({ error: 'Galeria nie istnieje' }, { status: 404 });
     }
 

@@ -56,8 +56,14 @@ export async function PATCH(
 
   const { id } = await params;
 
+  let body: any;
   try {
-    const body = await req.json();
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: 'Nieprawidłowe dane żądania' }, { status: 400 });
+  }
+
+  try {
     const existing = db.prepare('SELECT * FROM galleries WHERE id = ? OR slug = ?').get(id, id) as Record<string, any> | undefined;
     if (!existing) {
       return NextResponse.json({ error: 'Galeria nie istnieje' }, { status: 404 });
@@ -66,10 +72,11 @@ export async function PATCH(
     const newTitle = body.title !== undefined && body.title.trim() ? body.title.trim() : existing.title;
     const newShootDate = body.shoot_date !== undefined ? body.shoot_date : existing.shoot_date;
     const newWelcomeText = 'welcome_text' in body ? body.welcome_text : existing.welcome_text;
-    const newPin = body.pin_code !== undefined ? body.pin_code : existing.pin_code;
+    const newPin = body.pin_code !== undefined && String(body.pin_code).trim() ? String(body.pin_code).trim() : existing.pin_code;
     const newMaxSelections = 'max_selections' in body ? (Number(body.max_selections) || 0) : existing.max_selections;
     const newAllowZip = 'allow_zip_download' in body ? (body.allow_zip_download ? 1 : 0) : existing.allow_zip_download;
-    const newStatus = body.status !== undefined ? body.status : existing.status;
+    const ALLOWED_STATUSES = new Set(['draft', 'active', 'submitted', 'archived']);
+    const newStatus = body.status !== undefined && ALLOWED_STATUSES.has(body.status) ? body.status : existing.status;
     
     let newCoverPhotoId = existing.cover_photo_id;
     if ('cover_photo_id' in body) {

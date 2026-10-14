@@ -46,11 +46,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Brak autoryzacji' }, { status: 401 });
   }
 
+  let body: any;
   try {
-    const body = await req.json();
-    const { title, shoot_date, welcome_text, pin_code, max_selections, allow_zip_download } = body;
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: 'Nieprawidłowe dane żądania' }, { status: 400 });
+  }
 
-    if (!title || !shoot_date) {
+  try {
+    const { title, shoot_date, welcome_text, pin_code, max_selections, allow_zip_download } = body || {};
+
+    if (!title || typeof title !== 'string' || !title.trim() || !shoot_date) {
       return NextResponse.json({ error: 'Tytuł i data sesji są wymagane' }, { status: 400 });
     }
 

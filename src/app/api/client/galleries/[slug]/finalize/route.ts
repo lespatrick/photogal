@@ -11,7 +11,7 @@ export async function POST(
   try {
     const gallery = db.prepare('SELECT id, status, max_selections FROM galleries WHERE slug = ?').get(slug) as any;
 
-    if (!gallery) {
+    if (!gallery || gallery.status === 'draft') {
       return NextResponse.json({ error: 'Galeria nie istnieje' }, { status: 404 });
     }
 
@@ -24,12 +24,19 @@ export async function POST(
       return NextResponse.json({ message: 'Selekcja została już wcześniej sfinalizowana.' });
     }
 
+    if (gallery.status !== 'active') {
+      return NextResponse.json({ error: 'Galeria nie jest aktywna. Finalizacja jest zablokowana.' }, { status: 403 });
+    }
+
     const { notes } = await req.json().catch(() => ({ notes: '' }));
 
     const finalizeTx = db.transaction(() => {
       const current = db.prepare('SELECT status, max_selections FROM galleries WHERE id = ?').get(gallery.id) as { status: string; max_selections: number } | undefined;
-      if (!current || current.status === 'submitted') {
-        return { alreadySubmitted: true };
+      if (!current || current.status !== 'active') {
+        if (current?.status === 'submitted') {
+          return { alreadySubmitted: true };
+        }
+        return { error: 'Galeria nie jest obecnie aktywna.' };
       }
 
       const selectedCount = (db.prepare('SELECT COUNT(*) as count FROM selections WHERE gallery_id = ?').get(gallery.id) as any)?.count || 0;

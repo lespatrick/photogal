@@ -16,7 +16,7 @@ export async function POST(
       max_selections: number;
     } | undefined;
 
-    if (!gallery) {
+    if (!gallery || gallery.status === 'draft') {
       return NextResponse.json({ error: 'Galeria nie istnieje' }, { status: 404 });
     }
 
@@ -32,7 +32,23 @@ export async function POST(
       }, { status: 403 });
     }
 
-    const { photoId, action } = await req.json();
+    if (gallery.status !== 'active') {
+      return NextResponse.json({
+        error: 'Galeria nie jest aktywna. Edycja selekcji jest zablokowana.',
+        locked: true,
+      }, { status: 403 });
+    }
+
+    let photoId: string | undefined;
+    let action: string | undefined;
+    try {
+      const body = await req.json();
+      photoId = body?.photoId;
+      action = body?.action;
+    } catch {
+      return NextResponse.json({ error: 'Nieprawidłowe dane żądania' }, { status: 400 });
+    }
+
     if (!photoId) {
       return NextResponse.json({ error: 'Brak photoId' }, { status: 400 });
     }
@@ -43,16 +59,31 @@ export async function POST(
     }
 
     const txResult = db.transaction(() => {
+      // Re-fetch current status & limits inside immediate transaction
+      const current = db.prepare('SELECT status, max_selections FROM galleries WHERE id = ?').get(gallery.id) as {
+        status: string;
+        max_selections: number;
+      } | undefined;
+
+      if (!current || current.status !== 'active') {
+        return {
+          locked: true,
+          error: current?.status === 'submitted'
+            ? 'Selekcja została już sfinalizowana i wysłana do fotografa. Edycja jest zablokowana.'
+            : 'Galeria nie jest aktywna. Edycja selekcji jest zablokowana.',
+        };
+      }
+
       const existingSelection = db.prepare('SELECT id FROM selections WHERE gallery_id = ? AND photo_id = ?').get(gallery.id, photoId);
       let isSelected = false;
 
       if (action === 'like' || (!action && !existingSelection)) {
         if (!existingSelection) {
           const currentCount = (db.prepare('SELECT COUNT(*) as count FROM selections WHERE gallery_id = ?').get(gallery.id) as any)?.count || 0;
-          if (gallery.max_selections > 0 && currentCount >= gallery.max_selections) {
+          if (current.max_selections > 0 && currentCount >= current.max_selections) {
             return {
               limitReached: true,
-              error: `Osiągnięto maksymalną liczbę wybranych zdjęć w pakiecie (${gallery.max_selections}). Odznacz inne zdjęcie, aby dodać nowe.`,
+              error: `Osiągnięto maksymalną liczbę wybranych zdjęć w pakiecie (${current.max_selections}). Odznacz inne zdjęcie, aby dodać nowe.`,
             };
           }
 
@@ -79,6 +110,13 @@ export async function POST(
         selectedIds,
       };
     }).immediate();
+
+    if (txResult.locked) {
+      return NextResponse.json({
+        error: txResult.error,
+        locked: true,
+      }, { status: 403 });
+    }
 
     if (txResult.limitReached) {
       return NextResponse.json({

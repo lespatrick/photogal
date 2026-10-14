@@ -14,19 +14,25 @@ export async function DELETE(
   const { id, photoId } = await params;
 
   try {
-    const photo = db.prepare('SELECT * FROM photos WHERE id = ? AND gallery_id = ?').get(photoId, id) as any;
+    const gallery = db.prepare('SELECT id FROM galleries WHERE id = ? OR slug = ?').get(id, id) as { id: string } | undefined;
+    if (!gallery) {
+      return NextResponse.json({ error: 'Galeria nie istnieje' }, { status: 404 });
+    }
+    const actualId = gallery.id;
+
+    const photo = db.prepare('SELECT * FROM photos WHERE id = ? AND gallery_id = ?').get(photoId, actualId) as any;
     if (!photo) {
       return NextResponse.json({ error: 'Zdjęcie nie zostało znalezione' }, { status: 404 });
     }
 
     // Delete files from storage
-    deletePhotoFiles(id, photo.original_path, photo.thumb_path, photo.preview_path);
+    deletePhotoFiles(actualId, photo.original_path, photo.thumb_path, photo.preview_path);
 
     // Delete record from DB
     db.prepare('DELETE FROM photos WHERE id = ?').run(photoId);
 
     // Reset cover if this photo was the cover
-    db.prepare('UPDATE galleries SET cover_photo_id = NULL WHERE id = ? AND cover_photo_id = ?').run(id, photoId);
+    db.prepare('UPDATE galleries SET cover_photo_id = NULL WHERE id = ? AND cover_photo_id = ?').run(actualId, photoId);
 
     return NextResponse.json({ success: true });
   } catch (error) {
