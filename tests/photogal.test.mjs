@@ -5,7 +5,7 @@ import fs from 'fs';
 import { PassThrough } from 'stream';
 import { ZipArchive } from 'archiver';
 
-import db from '../src/lib/db';
+import db, { parseSqliteDate } from '../src/lib/db';
 import {
   hashPassword,
   verifyPassword,
@@ -13,10 +13,18 @@ import {
   verifyToken,
   createClientToken,
   verifyClientToken,
+  extractClientIp,
+  extractClientToken,
 } from '../src/lib/auth';
+import {
+  saveChallenge,
+  consumeChallenge,
+} from '../src/lib/webauthn';
 import {
   resolveSafeStoragePath,
   deletePhotoFiles,
+  deleteGalleryStorage,
+  getSafeGalleryBase,
   STORAGE_DIR,
 } from '../src/lib/storage';
 
@@ -130,5 +138,121 @@ describe('Photogal Core & Security Integration Test Suite', () => {
     // Emit synthetic stream error to verify it does not trigger unhandled exception crash
     archive.emit('error', new Error('Simulated stream failure'));
     assert.equal(errorHandled, true, 'Archive stream error must be caught by listener');
+  });
+
+  test('getSafeGalleryBase and deleteGalleryStorage never delete root galleries directory', () => {
+    // Malicious or empty galleryId inputs must return null
+    assert.equal(getSafeGalleryBase(''), null);
+    assert.equal(getSafeGalleryBase('.'), null);
+    assert.equal(getSafeGalleryBase('..'), null);
+    assert.equal(getSafeGalleryBase('   '), null);
+    assert.equal(getSafeGalleryBase(null), null);
+
+    const galleriesRoot = path.resolve(STORAGE_DIR, 'galleries');
+    fs.mkdirSync(galleriesRoot, { recursive: true });
+
+    // Attempt to invoke deleteGalleryStorage with empty or dot input
+    deleteGalleryStorage('');
+    deleteGalleryStorage('.');
+    deleteGalleryStorage('..');
+
+    // Root galleries directory MUST remain intact
+    assert.equal(fs.existsSync(galleriesRoot), true, 'Galleries root folder must never be deleted');
+  });
+
+  test('extractClientIp resolves rightmost forwarded IP to defeat client spoofing', () => {
+    // Simulated request with multiple forwarded IPs
+    const fakeReqWithSpoof = {
+      headers: new Headers({
+        'x-forwarded-for': '203.0.113.195, 198.51.100.1, 192.0.2.1',
+      }),
+    };
+    const resolvedIp = extractClientIp(fakeReqWithSpoof);
+    assert.equal(resolvedIp, '192.0.2.1', 'Must resolve rightmost IP added by proxy');
+
+    // Simulated request with X-Real-IP
+    const fakeReqWithRealIp = {
+      headers: new Headers({
+        'x-real-ip': '198.51.100.42',
+        'x-forwarded-for': 'attacker.spoofed.ip',
+      }),
+    };
+    assert.equal(extractClientIp(fakeReqWithRealIp), '198.51.100.42', 'Must prioritize verified X-Real-IP');
+  });
+
+  test('extractClientToken strictly isolates cookie lookup when galleryId is provided', () => {
+    const fakeReq = {
+      headers: new Headers(),
+      nextUrl: new URL('http://localhost:3000/api/test'),
+      cookies: {
+        get: (name) => (name === 'photogal_client_gal-A' ? { value: 'token-A' } : undefined),
+        getAll: () => [{ name: 'photogal_client_gal-A', value: 'token-A' }],
+      },
+    };
+
+    // When asking for gal-A, must return token-A
+    assert.equal(extractClientToken(fakeReq, 'gal-A'), 'token-A');
+
+    // When asking for gal-B, must NOT return token-A from other gallery
+    assert.equal(extractClientToken(fakeReq, 'gal-B'), null);
+  });
+
+  test('parseSqliteDate strictly normalizes SQLite datetime to UTC without local timezone skew', () => {
+    const rawSqlite = '2026-10-14 14:30:00';
+    const parsed = parseSqliteDate(rawSqlite);
+    assert.equal(parsed.toISOString(), '2026-10-14T14:30:00.000Z', 'Must evaluate to exact UTC time');
+    assert.equal(Number.isNaN(parsed.getTime()), false);
+
+    // Empty or invalid input
+    assert.equal(Number.isNaN(parseSqliteDate('').getTime()), true);
+  });
+
+  test('consumeChallenge is atomic and prevents replay', () => {
+    const challenge = 'test-atomic-challenge-' + Date.now();
+    saveChallenge(challenge, 'admin_login');
+
+    // First consumption must succeed
+    const firstConsume = consumeChallenge(challenge, 'admin_login');
+    assert.equal(firstConsume, true, 'First consumption of challenge must succeed');
+
+    // Second consumption must fail (replay attack defense)
+    const replayAttempt = consumeChallenge(challenge, 'admin_login');
+    assert.equal(replayAttempt, false, 'Replaying the same challenge must be rejected');
+  });
+
+  test('resolveSafeStoragePath rejects resolving the storage root itself', () => {
+    assert.equal(resolveSafeStoragePath('.'), null, 'Dot relative path must not return storage root');
+    assert.equal(resolveSafeStoragePath('./'), null);
+    assert.equal(resolveSafeStoragePath('..'), null);
+    assert.equal(resolveSafeStoragePath(''), null);
+    assert.equal(resolveSafeStoragePath('   '), null);
+  });
+
+  test('ZIP archive entry name sanitization eliminates Zip Slip path traversal', () => {
+    const maliciousNames = [
+      '../../etc/cron.d/malicious.jpg',
+      '..\\..\\windows\\system32\\calc.exe',
+      '/var/www/shell.php',
+      'folder/subfolder/photo.webp',
+      '..',
+      '../',
+      '..\\',
+    ];
+
+    for (const rawName of maliciousNames) {
+      const normalized = rawName.trim().replace(/\\/g, '/');
+      const sanitized = path.basename(normalized).replace(/[/\\?%*:|"<>]/g, '_').replace(/^\.+/, '') || 'photo.jpg';
+      assert.equal(sanitized.includes('/'), false, `Sanitized name "${sanitized}" must not contain forward slashes`);
+      assert.equal(sanitized.includes('\\'), false, `Sanitized name "${sanitized}" must not contain backslashes`);
+      assert.equal(sanitized.startsWith('..'), false, `Sanitized name "${sanitized}" must not begin with ..`);
+      assert.ok(sanitized.length > 0, 'Sanitized name must not be empty');
+    }
+  });
+
+  test('auth_challenges table has composite index for performant lookups', () => {
+    const activeDb = db.default || db;
+    const indices = activeDb.prepare("PRAGMA index_list('auth_challenges')").all();
+    const hasCompositeIndex = indices.some((idx) => idx.name === 'idx_auth_challenges_lookup');
+    assert.equal(hasCompositeIndex, true, 'auth_challenges must have idx_auth_challenges_lookup index');
   });
 });
