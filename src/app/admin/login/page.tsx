@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowRight, Fingerprint, KeyRound } from 'lucide-react';
+import { ArrowRight, Fingerprint } from 'lucide-react';
 import { startAuthentication } from '@simplewebauthn/browser';
 import { ThemeToggle } from '@/components/ThemeProvider';
 import { useToast } from '@/components/ToastProvider';
@@ -23,19 +23,6 @@ export default function AdminLoginPage() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [passkeyLoading, setPasskeyLoading] = useState(false);
-  const [hasPasskeys, setHasPasskeys] = useState(false);
-
-  useEffect(() => {
-    // Check if any passkeys are registered
-    fetch('/api/admin/passkey/login-options')
-      .then(parseJsonResponse)
-      .then((data) => {
-        if (data?.hasRegisteredPasskeys) {
-          setHasPasskeys(true);
-        }
-      })
-      .catch(() => {});
-  }, []);
 
   const handlePasswordLogin = async (e: React.FormEvent) => {
     e.preventDefault();

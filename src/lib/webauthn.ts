@@ -39,23 +39,36 @@ export function saveChallenge(challenge: string, userType: 'admin_register' | 'a
   return id;
 }
 
-export function consumeChallenge(challenge: string, userType: 'admin_register' | 'admin_login'): boolean {
+export function consumeChallenge(
+  challenge: string,
+  userType: 'admin_register' | 'admin_login',
+  expectedAdminId?: string
+): boolean {
   const now = Date.now();
   try {
-    const deleted = db.prepare(`
-      DELETE FROM auth_challenges 
-      WHERE challenge = ? AND user_type = ? AND expires_at >= ?
-      RETURNING id
-    `).get(challenge, userType, now);
+    let sql = 'DELETE FROM auth_challenges WHERE challenge = ? AND user_type = ? AND expires_at >= ?';
+    const params: any[] = [challenge, userType, now];
 
+    if (expectedAdminId) {
+      sql += ' AND (admin_id = ? OR admin_id IS NULL)';
+      params.push(expectedAdminId);
+    }
+
+    sql += ' RETURNING id';
+    const deleted = db.prepare(sql).get(...params);
     return !!deleted;
   } catch {
     // Fallback for environments where RETURNING might fail
     const tx = db.transaction(() => {
-      const row = db.prepare(`
-        SELECT id FROM auth_challenges 
-        WHERE challenge = ? AND user_type = ? AND expires_at >= ?
-      `).get(challenge, userType, now);
+      let selSql = 'SELECT id FROM auth_challenges WHERE challenge = ? AND user_type = ? AND expires_at >= ?';
+      const selParams: any[] = [challenge, userType, now];
+
+      if (expectedAdminId) {
+        selSql += ' AND (admin_id = ? OR admin_id IS NULL)';
+        selParams.push(expectedAdminId);
+      }
+
+      const row = db.prepare(selSql).get(...selParams);
       if (!row) return false;
       db.prepare('DELETE FROM auth_challenges WHERE id = ?').run((row as any).id);
       return true;

@@ -1,36 +1,32 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyAuthenticationResponse } from '@simplewebauthn/server';
+import crypto from 'crypto';
 import db from '@/lib/db';
-import { createAdminSession, extractClientIp } from '@/lib/auth';
+import { createAdminSession, extractClientIp, getAuthSecret } from '@/lib/auth';
 import { getWebAuthnConfig, consumeChallenge } from '@/lib/webauthn';
 
-const verifyRateLimitMap = new Map<string, { count: number; resetAt: number }>();
-const MAX_RATE_LIMIT_ENTRIES = 5000;
+function getAdminIpHash(req: NextRequest): string {
+  const ip = extractClientIp(req);
+  return crypto.createHash('sha256').update(ip + getAuthSecret()).digest('hex');
+}
 
 export async function POST(req: NextRequest) {
-  const ip = extractClientIp(req);
-  const now = Date.now();
+  const ipHash = getAdminIpHash(req);
 
-  if (verifyRateLimitMap.size > 200) {
-    for (const [key, val] of verifyRateLimitMap.entries()) {
-      if (val.resetAt <= now) {
-        verifyRateLimitMap.delete(key);
-      }
-    }
+  // 1. Check persistent rate limiting & lockouts from SQLite
+  const recentFails = (db.prepare(`
+    SELECT COUNT(*) as count FROM admin_login_attempts 
+    WHERE ip_hash = ? AND attempted_at > datetime('now', '-15 minutes')
+  `).get(ipHash) as any)?.count || 0;
+
+  if (recentFails >= 5) {
+    return NextResponse.json({
+      error: 'Zbyt wiele nieudanych prób logowania. Odczekaj 15 minut przed kolejną próbą.',
+    }, { status: 429 });
   }
 
-  const rl = verifyRateLimitMap.get(ip);
-  if (rl && rl.resetAt > now) {
-    if (rl.count >= 20) {
-      return NextResponse.json({ error: 'Zbyt wiele prób weryfikacji. Odczekaj chwilę.' }, { status: 429 });
-    }
-    rl.count++;
-  } else {
-    if (verifyRateLimitMap.size >= MAX_RATE_LIMIT_ENTRIES) {
-      const oldestKey = verifyRateLimitMap.keys().next().value;
-      if (oldestKey) verifyRateLimitMap.delete(oldestKey);
-    }
-    verifyRateLimitMap.set(ip, { count: 1, resetAt: now + 60000 });
+  if (recentFails >= 3) {
+    await new Promise((r) => setTimeout(r, 2000));
   }
 
   let response: any;
@@ -44,8 +40,9 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    if (!response || !challenge) {
-      return NextResponse.json({ error: 'Brak danych uwierzytelnienia' }, { status: 400 });
+    // 2. Strict input validation
+    if (!response || typeof response !== 'object' || typeof response.id !== 'string' || !response.id.trim() || !challenge) {
+      return NextResponse.json({ error: 'Brak lub nieprawidłowe dane uwierzytelnienia' }, { status: 400 });
     }
 
     const isValidChallenge = consumeChallenge(challenge, 'admin_login');
@@ -55,9 +52,13 @@ export async function POST(req: NextRequest) {
 
     const authenticator = db.prepare(`
       SELECT * FROM authenticators WHERE id = ?
-    `).get(response.id) as any;
+    `).get(response.id.trim()) as any;
 
     if (!authenticator) {
+      db.prepare('INSERT INTO admin_login_attempts (id, ip_hash) VALUES (?, ?)').run(
+        crypto.randomUUID(),
+        ipHash
+      );
       return NextResponse.json({ error: 'Nierozpoznany klucz Passkey' }, { status: 404 });
     }
 
@@ -71,23 +72,39 @@ export async function POST(req: NextRequest) {
       try { authTransports = JSON.parse(authenticator.transports); } catch {}
     }
 
-    const verification = await verifyAuthenticationResponse({
-      response,
-      expectedChallenge: challenge,
-      expectedOrigin: origin,
-      expectedRPID: rpID,
-      credential: {
-        id: authenticator.id,
-        publicKey: publicKeyUint8,
-        counter: authenticator.counter,
-        transports: authTransports,
-      },
-      requireUserVerification: false,
-    });
+    let verification: any;
+    try {
+      verification = await verifyAuthenticationResponse({
+        response,
+        expectedChallenge: challenge,
+        expectedOrigin: origin,
+        expectedRPID: rpID,
+        credential: {
+          id: authenticator.id,
+          publicKey: publicKeyUint8,
+          counter: authenticator.counter,
+          transports: authTransports,
+        },
+        requireUserVerification: false,
+      });
+    } catch (verifyErr: any) {
+      db.prepare('INSERT INTO admin_login_attempts (id, ip_hash) VALUES (?, ?)').run(
+        crypto.randomUUID(),
+        ipHash
+      );
+      return NextResponse.json({ error: verifyErr.message || 'Weryfikacja podpisu biometrycznego nie powiodła się' }, { status: 401 });
+    }
 
     if (!verification.verified) {
+      db.prepare('INSERT INTO admin_login_attempts (id, ip_hash) VALUES (?, ?)').run(
+        crypto.randomUUID(),
+        ipHash
+      );
       return NextResponse.json({ error: 'Podpis biometryczny nieprawidłowy' }, { status: 401 });
     }
+
+    // Success -> clear failed attempts
+    db.prepare('DELETE FROM admin_login_attempts WHERE ip_hash = ?').run(ipHash);
 
     // Update authenticator counter & last_used_at
     db.prepare(`

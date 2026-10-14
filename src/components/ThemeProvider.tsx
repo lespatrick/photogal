@@ -17,7 +17,6 @@ const ThemeContext = createContext<ThemeContextType>({
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setTheme] = useState<Theme>('dark');
-  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
     const savedTheme = localStorage.getItem('photogal_theme') as Theme | null;
@@ -27,7 +26,6 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     } else {
       document.documentElement.setAttribute('data-theme', 'dark');
     }
-    setMounted(true);
   }, []);
 
   const toggleTheme = () => {

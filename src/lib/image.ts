@@ -68,16 +68,16 @@ export async function processAndSavePhoto(
     const finalHeight = isRotated ? originalWidth : originalHeight;
     const aspectRatio = +(finalWidth / finalHeight).toFixed(4);
 
-    // 3. Generate High-Res WebP Preview directly to disk (max 2200x2200) to minimize memory footprint
-    await sharp(buffer)
+    // 3. Generate High-Res WebP Preview directly from original file on disk (max 2200x2200) to minimize heap memory footprint
+    await sharp(originalFullPath)
       .rotate()
       .resize(2200, 2200, { fit: 'inside', withoutEnlargement: true })
       .webp({ quality: 86, effort: 3 })
       .toFile(previewFullPath);
     writtenFiles.push(previewFullPath);
 
-    // 4. Generate WebP Thumbnail directly from source buffer to eliminate lossy re-encoding artifacts
-    await sharp(buffer)
+    // 4. Generate WebP Thumbnail directly from original file on disk to eliminate in-memory buffer duplication
+    await sharp(originalFullPath)
       .rotate()
       .resize(600, 600, { fit: 'inside', withoutEnlargement: true })
       .webp({ quality: 82, effort: 3 })

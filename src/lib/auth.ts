@@ -99,7 +99,7 @@ export async function createAdminSession(adminId: string) {
   const token = signToken(payload);
   cookieStore.set(SESSION_COOKIE_NAME, token, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production' || process.env.ALLOW_HTTP !== 'true',
+    secure: process.env.NODE_ENV === 'production' && process.env.ALLOW_HTTP !== 'true',
     sameSite: 'lax',
     path: '/',
     maxAge: 60 * 60 * 24 * 7,

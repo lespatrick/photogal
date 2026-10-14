@@ -1,10 +1,10 @@
 'use client';
 
-import React, { useEffect, useState, useRef, use } from 'react';
+import React, { useEffect, useState, useRef, use, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
-  ArrowLeft, Upload, Copy, Check, ExternalLink, Heart,
+  ArrowLeft, Upload, Copy, Check, ExternalLink,
   Download, Trash2, FileText, Settings, X, Star, ShieldAlert, ShieldCheck
 } from 'lucide-react';
 import { ThemeToggle } from '@/components/ThemeProvider';
@@ -95,7 +95,7 @@ export default function GalleryManagementPage({
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  const fetchSecurityInfo = async () => {
+  const fetchSecurityInfo = useCallback(async () => {
     try {
       const res = await fetch(`/api/admin/galleries/${galleryId}/security`);
       if (res.ok) {
@@ -103,7 +103,7 @@ export default function GalleryManagementPage({
         setSecurityInfo(sec);
       }
     } catch {}
-  };
+  }, [galleryId]);
 
   const handleResetSecurity = async () => {
     try {
@@ -117,7 +117,7 @@ export default function GalleryManagementPage({
     }
   };
 
-  const fetchGalleryData = async () => {
+  const fetchGalleryData = useCallback(async () => {
     try {
       const res = await fetch(`/api/admin/galleries/${galleryId}`);
       if (res.status === 401) {
@@ -139,12 +139,12 @@ export default function GalleryManagementPage({
     } finally {
       setLoading(false);
     }
-  };
+  }, [galleryId, router, toast]);
 
   useEffect(() => {
     fetchGalleryData();
     fetchSecurityInfo();
-  }, [galleryId]);
+  }, [fetchGalleryData, fetchSecurityInfo]);
 
   const handleFileUpload = async (files: FileList | null) => {
     if (!files || files.length === 0) return;

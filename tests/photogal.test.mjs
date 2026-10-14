@@ -421,5 +421,27 @@ describe('Photogal Core & Security Integration Test Suite', () => {
     const countAfter = (activeDb.prepare('SELECT COUNT(*) as count FROM admin_login_attempts WHERE ip_hash = ?').get(testIpHash)).count;
     assert.equal(countAfter, 0);
   });
+
+  test('consumeChallenge strictly binds challenge to expectedAdminId', () => {
+    const challenge = 'test-bound-challenge-' + Date.now();
+    const correctAdmin = 'admin-uuid-111';
+    const wrongAdmin = 'admin-uuid-222';
+
+    saveChallenge(challenge, 'admin_register', correctAdmin);
+
+    // Wrong admin cannot consume
+    const wrongConsume = consumeChallenge(challenge, 'admin_register', wrongAdmin);
+    assert.equal(wrongConsume, false, 'Challenge must not be consumed by unauthorized admin');
+
+    // Correct admin can consume
+    const correctConsume = consumeChallenge(challenge, 'admin_register', correctAdmin);
+    assert.equal(correctConsume, true, 'Challenge must be consumed by authorized admin');
+  });
+
+  test('Database wal_autocheckpoint pragma is configured for WAL maintenance', () => {
+    const activeDb = db.default || db;
+    const checkpoint = activeDb.pragma('wal_autocheckpoint', { simple: true });
+    assert.equal(Number(checkpoint), 1000, 'wal_autocheckpoint must be configured to 1000 pages');
+  });
 });
 

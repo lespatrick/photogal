@@ -1,11 +1,11 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   Plus, LogOut, ExternalLink, Copy, Check,
-  Heart, Trash2, Calendar, Key, X, Fingerprint, ShieldCheck, Lock
+  Heart, Trash2, X, Fingerprint, ShieldCheck, Lock
 } from 'lucide-react';
 import { startRegistration } from '@simplewebauthn/browser';
 import { ThemeToggle } from '@/components/ThemeProvider';
@@ -188,7 +188,7 @@ export default function AdminDashboardPage() {
     }
   };
 
-  const fetchGalleries = async () => {
+  const fetchGalleries = useCallback(async () => {
     try {
       const res = await fetch('/api/admin/galleries');
       if (res.status === 401) {
@@ -202,11 +202,11 @@ export default function AdminDashboardPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [router, toast]);
 
   useEffect(() => {
     fetchGalleries();
-  }, []);
+  }, [fetchGalleries]);
 
   const handleLogout = async () => {
     await fetch('/api/admin/login', { method: 'DELETE' });

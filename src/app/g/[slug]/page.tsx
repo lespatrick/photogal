@@ -2,8 +2,7 @@
 
 import React, { useEffect, useState, useRef, use, useCallback } from 'react';
 import {
-  Heart, X, ChevronLeft, ChevronRight, Check, Send, Download,
-  Lock, ArrowRight, CheckCircle2
+  Heart, X, ChevronLeft, ChevronRight, Check, Download
 } from 'lucide-react';
 import { ThemeToggle } from '@/components/ThemeProvider';
 import { useToast } from '@/components/ToastProvider';
@@ -144,7 +143,7 @@ export default function ClientGalleryPage({
     }
   };
 
-  const handleToggleSelection = async (photoId: string, e?: React.MouseEvent) => {
+  const handleToggleSelection = useCallback(async (photoId: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
 
     if (gallery?.status === 'submitted') {
@@ -206,7 +205,7 @@ export default function ClientGalleryPage({
     } catch (err: any) {
       toast(err.message, 'error');
     }
-  };
+  }, [gallery?.status, getClientToken, slug, toast]);
 
   // Keyboard navigation for Lightbox
   useEffect(() => {
@@ -238,7 +237,7 @@ export default function ClientGalleryPage({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [lightboxIndex, filterMode, photos, selectedIds, gallery?.status]);
+  }, [lightboxIndex, filterMode, photos, selectedIds, handleToggleSelection]);
 
   // Touch swipe handling
   const handleTouchStart = (e: React.TouchEvent) => {
@@ -271,6 +270,20 @@ export default function ClientGalleryPage({
     touchStartX.current = null;
     touchEndX.current = null;
   };
+
+  const currentDisplayPhotos = filterMode === 'selected'
+    ? photos.filter((p) => selectedIds.has(p.id))
+    : photos;
+
+  useEffect(() => {
+    if (lightboxIndex !== null) {
+      if (currentDisplayPhotos.length === 0) {
+        setLightboxIndex(null);
+      } else if (lightboxIndex >= currentDisplayPhotos.length) {
+        setLightboxIndex(Math.max(0, currentDisplayPhotos.length - 1));
+      }
+    }
+  }, [lightboxIndex, currentDisplayPhotos.length]);
 
   const handleFinalize = async () => {
     const token = getClientToken();
@@ -385,20 +398,6 @@ export default function ClientGalleryPage({
   const selectedCount = selectedIds.size;
   const maxLimit = gallery?.max_selections || 0;
   const isSubmitted = gallery?.status === 'submitted';
-
-  const currentDisplayPhotos = filterMode === 'selected'
-    ? photos.filter((p) => selectedIds.has(p.id))
-    : photos;
-
-  useEffect(() => {
-    if (lightboxIndex !== null) {
-      if (currentDisplayPhotos.length === 0) {
-        setLightboxIndex(null);
-      } else if (lightboxIndex >= currentDisplayPhotos.length) {
-        setLightboxIndex(Math.max(0, currentDisplayPhotos.length - 1));
-      }
-    }
-  }, [lightboxIndex, currentDisplayPhotos.length]);
 
   const currentLightboxPhoto = lightboxIndex !== null && lightboxIndex < currentDisplayPhotos.length
     ? currentDisplayPhotos[lightboxIndex]

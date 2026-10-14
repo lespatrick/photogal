@@ -79,7 +79,15 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       fetch(event.request).catch(async () => {
         const match = await caches.match(event.request);
-        return match || caches.match('/') || new Response('Offline', { status: 503 });
+        if (match) return match;
+        if (url.pathname === '/') {
+          const rootMatch = await caches.match('/');
+          if (rootMatch) return rootMatch;
+        }
+        return new Response('Jesteś w trybie offline. Połącz się z siecią, aby załadować tę stronę.', {
+          status: 503,
+          headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+        });
       })
     );
   }

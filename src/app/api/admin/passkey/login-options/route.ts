@@ -2,12 +2,36 @@ import { NextRequest, NextResponse } from 'next/server';
 import { generateAuthenticationOptions } from '@simplewebauthn/server';
 import db from '@/lib/db';
 import { getWebAuthnConfig, saveChallenge } from '@/lib/webauthn';
-import { extractClientIp } from '@/lib/auth';
+import crypto from 'crypto';
+import { getAuthSecret, extractClientIp } from '@/lib/auth';
 
 const optionsRateLimitMap = new Map<string, { count: number; resetAt: number }>();
 const MAX_RATE_LIMIT_ENTRIES = 5000;
 
+function getAdminIpHash(req: NextRequest): string {
+  const ip = extractClientIp(req);
+  return crypto.createHash('sha256').update(ip + getAuthSecret()).digest('hex');
+}
+
 export async function GET(req: NextRequest) {
+  const ipHash = getAdminIpHash(req);
+
+  // Check persistent admin lockouts (15 minutes lockout after 5 fails, tarpit after 3)
+  const recentFails = (db.prepare(`
+    SELECT COUNT(*) as count FROM admin_login_attempts 
+    WHERE ip_hash = ? AND attempted_at > datetime('now', '-15 minutes')
+  `).get(ipHash) as any)?.count || 0;
+
+  if (recentFails >= 5) {
+    return NextResponse.json({
+      error: 'Zbyt wiele nieudanych prób logowania. Odczekaj 15 minut przed kolejną próbą.',
+    }, { status: 429 });
+  }
+
+  if (recentFails >= 3) {
+    await new Promise((r) => setTimeout(r, 2000));
+  }
+
   const ip = extractClientIp(req);
   const now = Date.now();
 

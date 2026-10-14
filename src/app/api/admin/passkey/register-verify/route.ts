@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Brak wymaganych danych weryfikacji' }, { status: 400 });
     }
 
-    const isValidChallenge = consumeChallenge(challenge, 'admin_register');
+    const isValidChallenge = consumeChallenge(challenge, 'admin_register', adminId);
     if (!isValidChallenge) {
       return NextResponse.json({ error: 'Wyzwanie wygasło lub jest nieprawidłowe' }, { status: 400 });
     }
