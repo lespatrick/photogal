@@ -174,7 +174,7 @@ export async function POST(
     // Set HttpOnly client cookie for seamless authenticated media streaming
     res.cookies.set(`photogal_client_${gallery.id}`, token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: process.env.NODE_ENV === 'production' || process.env.ALLOW_HTTP !== 'true',
       sameSite: 'lax',
       path: '/',
       maxAge: 60 * 60 * 24 * 30, // 30 days

@@ -29,9 +29,8 @@ export function getAuthSecret(): string {
     cachedAuthSecret = generated;
     return cachedAuthSecret;
   } catch {
-    // Fallback if DB is not ready during tests/bootstrap
+    // Fallback if DB is not ready during tests/bootstrap (do NOT poison cachedAuthSecret)
     const ephemeral = crypto.randomBytes(32).toString('hex');
-    cachedAuthSecret = ephemeral;
     return ephemeral;
   }
 }
@@ -100,7 +99,7 @@ export async function createAdminSession(adminId: string) {
   const token = signToken(payload);
   cookieStore.set(SESSION_COOKIE_NAME, token, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    secure: process.env.NODE_ENV === 'production' || process.env.ALLOW_HTTP !== 'true',
     sameSite: 'lax',
     path: '/',
     maxAge: 60 * 60 * 24 * 7,

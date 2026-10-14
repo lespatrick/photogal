@@ -29,6 +29,8 @@ import {
   getFilePath,
   STORAGE_DIR,
 } from '../src/lib/storage';
+import { proxy } from '../src/proxy';
+import { NextRequest } from 'next/server';
 
 describe('Photogal Core & Security Integration Test Suite', () => {
   test('Password hashing (async scrypt) and constant-time verification from auth.ts', async () => {
@@ -306,4 +308,72 @@ describe('Photogal Core & Security Integration Test Suite', () => {
     assert.equal(secureComparePins(long1, long1), true);
     assert.equal(secureComparePins(long1, long2), false, 'Must not collide or truncate at 32 bytes');
   });
+
+  test('Proxy strictly disables HTTP connections by redirecting to HTTPS with 308 and HSTS', () => {
+    // 1. Plaintext HTTP through reverse proxy (x-forwarded-proto: http)
+    const httpReq = new NextRequest('http://studio.example.com/g/wedding-session?tab=selected', {
+      headers: {
+        'x-forwarded-proto': 'http',
+        'host': 'studio.example.com',
+      },
+    });
+
+    const redirectRes = proxy(httpReq);
+    assert.equal(redirectRes.status, 308, 'Must return 308 Permanent Redirect for plaintext HTTP');
+    assert.equal(
+      redirectRes.headers.get('location'),
+      'https://studio.example.com/g/wedding-session?tab=selected',
+      'Must redirect to https preserving pathname and query string'
+    );
+    assert.ok(
+      redirectRes.headers.get('Strict-Transport-Security'),
+      'Redirect response must include Strict-Transport-Security header'
+    );
+
+    // 2. Direct non-loopback HTTP request
+    const directHttpReq = new NextRequest('http://photogal.studio/admin/login', {
+      headers: {
+        'host': 'photogal.studio',
+      },
+    });
+    const directRes = proxy(directHttpReq);
+    assert.equal(directRes.status, 308);
+    assert.equal(directRes.headers.get('location'), 'https://photogal.studio/admin/login');
+
+    // 3. Internal loopback request without proxy header (e.g. Docker health check wget http://127.0.0.1:3000/)
+    const healthCheckReq = new NextRequest('http://127.0.0.1:3000/', {
+      headers: {
+        'host': '127.0.0.1:3000',
+      },
+    });
+    const healthRes = proxy(healthCheckReq);
+    assert.notEqual(healthRes.status, 308, 'Internal container health check must not be redirected to HTTPS');
+
+    // 4. Secure HTTPS request through reverse proxy
+    const httpsReq = new NextRequest('https://studio.example.com/g/wedding-session', {
+      headers: {
+        'x-forwarded-proto': 'https',
+        'host': 'studio.example.com',
+      },
+    });
+    const httpsRes = proxy(httpsReq);
+    assert.notEqual(httpsRes.status, 308, 'Valid HTTPS request must not be redirected');
+    assert.equal(
+      httpsRes.headers.get('Strict-Transport-Security'),
+      'max-age=63072000; includeSubDomains; preload',
+      'HTTPS response must enforce Strict-Transport-Security with 2-year preload'
+    );
+    assert.equal(httpsRes.headers.get('X-Content-Type-Options'), 'nosniff');
+    assert.equal(httpsRes.headers.get('X-Frame-Options'), 'DENY');
+
+    // 5. Configurable ALLOW_HTTP bypass
+    process.env.ALLOW_HTTP = 'true';
+    try {
+      const allowedRes = proxy(httpReq);
+      assert.notEqual(allowedRes.status, 308, 'ALLOW_HTTP=true must bypass HTTPS redirect');
+    } finally {
+      delete process.env.ALLOW_HTTP;
+    }
+  });
 });
+
