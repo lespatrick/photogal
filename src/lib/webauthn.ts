@@ -11,8 +11,16 @@ export function getWebAuthnConfig(req: Request) {
   const rawProto = req.headers.get('x-forwarded-proto') || url.protocol.replace(':', '');
   const proto = rawProto === 'https' || (process.env.NODE_ENV === 'production') ? 'https' : 'http';
 
-  let hostname = safeHost.split(':')[0] || 'localhost';
-  const port = safeHost.includes(':') ? `:${safeHost.split(':')[1]}` : '';
+  const hostParts = safeHost.split(':');
+  let hostname = hostParts[0] || 'localhost';
+  let port = '';
+  if (hostParts.length === 2 && /^[0-9]{1,5}$/.test(hostParts[1])) {
+    const portNum = parseInt(hostParts[1], 10);
+    if (portNum > 0 && portNum <= 65535 && portNum !== 80 && portNum !== 443) {
+      port = `:${portNum}`;
+    }
+  }
+
   const isLoopback = hostname === 'localhost' || hostname === '127.0.0.1';
 
   const allowedHosts = [
@@ -22,6 +30,7 @@ export function getWebAuthnConfig(req: Request) {
 
   if (allowedHosts.length > 0 && !isLoopback && !allowedHosts.includes(hostname.toLowerCase())) {
     hostname = allowedHosts[0];
+    port = ''; // Invalidate any untrusted port from the rejected host
   }
 
   const rpID = envRpId || hostname;

@@ -493,5 +493,66 @@ describe('Photogal Core & Security Integration Test Suite', () => {
     assert.ok(perm, 'Permissions-Policy must be set');
     assert.ok(perm.includes('camera=()'), 'Permissions-Policy must disable camera');
   });
+
+  test('getWebAuthnConfig strips untrusted ports when host fallback is triggered', () => {
+    process.env.ALLOWED_HOSTS = 'photogal.studio';
+    try {
+      const maliciousReq = new Request('http://photogal.studio/api/admin/passkey/login-options', {
+        headers: {
+          'host': 'evil-domain.com:9999',
+          'x-forwarded-proto': 'https',
+        },
+      });
+
+      const config = getWebAuthnConfig(maliciousReq);
+      assert.equal(config.rpID, 'photogal.studio');
+      assert.equal(config.origin, 'https://photogal.studio', 'Untrusted port from evil host must be stripped');
+    } finally {
+      delete process.env.ALLOWED_HOSTS;
+    }
+  });
+
+  test('Client tokens with pin_version enforce PIN change revocation', () => {
+    const galleryId = 'test-gallery-pin-v';
+    const initialToken = createClientToken(galleryId, 1);
+
+    // Initial valid check
+    assert.ok(verifyClientToken(initialToken, galleryId, 1), 'Token with matching pin_version must verify');
+
+    // After PIN change, pin_version increments to 2
+    assert.strictEqual(
+      verifyClientToken(initialToken, galleryId, 2),
+      false,
+      'Old client token must be revoked when pin_version changes'
+    );
+
+    const freshToken = createClientToken(galleryId, 2);
+    assert.ok(verifyClientToken(freshToken, galleryId, 2), 'Fresh token with new pin_version must verify');
+  });
+
+  test('Proxy rejects HTTPS requests with disallowed host when ALLOWED_HOSTS is set', () => {
+    process.env.ALLOWED_HOSTS = 'studio.example.com';
+    try {
+      const disallowedReq = new NextRequest('https://evil-phishing.com/admin', {
+        headers: {
+          'host': 'evil-phishing.com',
+          'x-forwarded-proto': 'https',
+        },
+      });
+
+      const res = proxy(disallowedReq);
+      assert.equal(res.status, 400, 'Direct HTTPS request with disallowed Host header must return 400 Bad Request');
+    } finally {
+      delete process.env.ALLOWED_HOSTS;
+    }
+  });
+
+  test('Database has indexes on expires_at and attempted_at columns for optimal pruning', () => {
+    const activeDb = db.default || db;
+    const indexes = activeDb.prepare("SELECT name FROM sqlite_master WHERE type = 'index'").all().map((r) => r.name);
+    assert.ok(indexes.includes('idx_auth_challenges_expires'), 'auth_challenges must index expires_at');
+    assert.ok(indexes.includes('idx_pin_attempts_attempted_at'), 'pin_attempts must index attempted_at');
+    assert.ok(indexes.includes('idx_admin_login_attempts_attempted_at'), 'admin_login_attempts must index attempted_at');
+  });
 });
 

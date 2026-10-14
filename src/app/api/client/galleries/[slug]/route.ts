@@ -13,7 +13,7 @@ export async function GET(
       SELECT 
         g.id, g.slug, g.title, g.shoot_date, g.welcome_text,
         g.max_selections, g.allow_zip_download, g.status,
-        g.submitted_at, g.client_notes,
+        g.submitted_at, g.client_notes, g.pin_version,
         (SELECT thumb_path FROM photos p WHERE p.id = g.cover_photo_id) AS cover_thumb,
         (SELECT thumb_path FROM photos p WHERE p.gallery_id = g.id ORDER BY p.order_index ASC, p.created_at ASC LIMIT 1) AS fallback_thumb
       FROM galleries g
@@ -25,7 +25,7 @@ export async function GET(
     }
 
     const token = extractClientToken(req, gallery.id);
-    const isAuthorized = token ? verifyClientToken(token, gallery.id) : false;
+    const isAuthorized = token ? verifyClientToken(token, gallery.id, gallery.pin_version) : false;
 
     if (!isAuthorized) {
       return NextResponse.json({

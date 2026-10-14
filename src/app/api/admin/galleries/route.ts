@@ -107,6 +107,10 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    if (!inserted) {
+      return NextResponse.json({ error: 'Nie udało się wygenerować unikalnego adresu URL galerii' }, { status: 409 });
+    }
+
     const created = db.prepare('SELECT * FROM galleries WHERE id = ?').get(id);
     return NextResponse.json({ gallery: created }, { status: 201 });
   } catch (error) {

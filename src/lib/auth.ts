@@ -141,17 +141,28 @@ export async function destroyAdminSession() {
 }
 
 // Client PIN verification token
-export function createClientToken(galleryId: string): string {
-  const payload = JSON.stringify({ galleryId, exp: Date.now() + 1000 * 60 * 60 * 24 * 30 }); // 30 days
+export function createClientToken(galleryId: string, pinVersion?: number): string {
+  const payload = JSON.stringify({
+    galleryId,
+    pinVersion: pinVersion || 1,
+    exp: Date.now() + 1000 * 60 * 60 * 24 * 30, // 30 days
+  });
   return signToken(payload);
 }
 
-export function verifyClientToken(token: string, expectedGalleryId: string): boolean {
+export function verifyClientToken(token: string, expectedGalleryId: string, expectedPinVersion?: number): boolean {
   const verified = verifyToken(token);
   if (!verified) return false;
   try {
     const data = JSON.parse(verified);
-    return data.galleryId === expectedGalleryId && data.exp > Date.now();
+    if (data.galleryId !== expectedGalleryId || data.exp <= Date.now()) return false;
+    if (expectedPinVersion !== undefined) {
+      const tokenPinVersion = data.pinVersion ?? 1;
+      if (tokenPinVersion !== expectedPinVersion) {
+        return false;
+      }
+    }
+    return true;
   } catch {
     return false;
   }
@@ -190,12 +201,16 @@ export function extractClientToken(req: NextRequest, galleryId?: string): string
   const headerToken = req.headers.get('x-client-token');
   if (headerToken) return headerToken;
 
+  if (galleryId) {
+    const cookieToken = req.cookies.get(`${CLIENT_COOKIE_PREFIX}${galleryId}`)?.value;
+    if (cookieToken) return cookieToken;
+  }
+
   const queryToken = req.nextUrl.searchParams.get('token');
   if (queryToken && queryToken !== 'null' && queryToken !== 'undefined') return queryToken;
 
   if (galleryId) {
-    const cookieToken = req.cookies.get(`${CLIENT_COOKIE_PREFIX}${galleryId}`)?.value;
-    return cookieToken || null;
+    return null;
   }
 
   // Fallback: check all cookies starting with photogal_client_ only when galleryId is omitted

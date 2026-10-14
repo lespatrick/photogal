@@ -43,7 +43,7 @@ export async function GET(
 
     if (!isAdmin) {
       const gallery = db.prepare(`
-        SELECT id, status, allow_zip_download, cover_photo_id 
+        SELECT id, status, allow_zip_download, cover_photo_id, pin_version 
         FROM galleries 
         WHERE id = ?
       `).get(galleryId) as {
@@ -51,6 +51,7 @@ export async function GET(
         status: string;
         allow_zip_download: number;
         cover_photo_id: string | null;
+        pin_version?: number;
       } | undefined;
 
       if (!gallery || gallery.status === 'draft') {
@@ -58,7 +59,7 @@ export async function GET(
       }
 
       const clientToken = extractClientToken(req, galleryId);
-      const isClientAuthorized = clientToken ? verifyClientToken(clientToken, galleryId) : false;
+      const isClientAuthorized = clientToken ? verifyClientToken(clientToken, galleryId, gallery.pin_version) : false;
 
       if (!isClientAuthorized) {
         // Allow only cover thumbnail for public PIN gate preview
@@ -145,18 +146,38 @@ export async function GET(
     // Support HTTP Range requests (RFC 7233) for resumable downloads and media streaming
     if (rangeHeader && rangeHeader.startsWith('bytes=')) {
       const match = rangeHeader.replace(/^bytes=/, '').trim();
-      const parts = match.split('-');
-      let start: number | null = parts[0] ? parseInt(parts[0], 10) : null;
-      let end: number | null = parts[1] ? parseInt(parts[1], 10) : null;
+      const rangeMatch = match.match(/^(\d*)-(\d*)$/);
+
+      if (!rangeMatch) {
+        // Malformed, multi-range or negative syntax -> return 416
+        return new NextResponse(null, {
+          status: 416,
+          headers: {
+            'Content-Range': `bytes */${fileSize}`,
+          },
+        });
+      }
+
+      const rawStart = rangeMatch[1];
+      const rawEnd = rangeMatch[2];
+
+      let start: number | null = rawStart ? parseInt(rawStart, 10) : null;
+      let end: number | null = rawEnd ? parseInt(rawEnd, 10) : null;
 
       // Handle suffix byte range: bytes=-500 (last 500 bytes)
-      if (start === null && end !== null && !isNaN(end) && end > 0) {
+      if (start === null && end !== null) {
+        if (end <= 0) {
+          return new NextResponse(null, {
+            status: 416,
+            headers: { 'Content-Range': `bytes */${fileSize}` },
+          });
+        }
         start = Math.max(0, fileSize - end);
         end = fileSize - 1;
       }
 
-      if (start !== null && !isNaN(start)) {
-        if (start >= fileSize || (end !== null && !isNaN(end) && start > end)) {
+      if (start !== null) {
+        if (start < 0 || start >= fileSize || (end !== null && (end < start || end < 0))) {
           return new NextResponse(null, {
             status: 416,
             headers: {
@@ -165,25 +186,23 @@ export async function GET(
           });
         }
 
-        const chunkEnd = Math.min(end !== null && !isNaN(end) ? end : fileSize - 1, fileSize - 1);
-        if (chunkEnd >= start) {
-          const chunkSize = chunkEnd - start + 1;
-          const rangeStream = fs.createReadStream(fullPath, { start, end: chunkEnd });
-          rangeStream.on('error', (err) => {
-            console.error('Media range stream error:', err);
-          });
-          req.signal?.addEventListener('abort', () => {
-            if (!rangeStream.destroyed) rangeStream.destroy();
-          });
+        const chunkEnd = Math.min(end !== null ? end : fileSize - 1, fileSize - 1);
+        const chunkSize = chunkEnd - start + 1;
+        const rangeStream = fs.createReadStream(fullPath, { start, end: chunkEnd });
+        rangeStream.on('error', (err) => {
+          console.error('Media range stream error:', err);
+        });
+        req.signal?.addEventListener('abort', () => {
+          if (!rangeStream.destroyed) rangeStream.destroy();
+        });
 
-          headers['Content-Range'] = `bytes ${start}-${chunkEnd}/${fileSize}`;
-          headers['Content-Length'] = chunkSize.toString();
+        headers['Content-Range'] = `bytes ${start}-${chunkEnd}/${fileSize}`;
+        headers['Content-Length'] = chunkSize.toString();
 
-          return new NextResponse(Readable.toWeb(rangeStream) as ReadableStream, {
-            status: 206,
-            headers,
-          });
-        }
+        return new NextResponse(Readable.toWeb(rangeStream) as ReadableStream, {
+          status: 206,
+          headers,
+        });
       }
     }
 

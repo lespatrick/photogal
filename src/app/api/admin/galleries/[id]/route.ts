@@ -129,7 +129,7 @@ export async function PATCH(
     );
 
     if (pinChanged) {
-      db.prepare('UPDATE galleries SET pin_locked_until = NULL WHERE id = ?').run(existing.id);
+      db.prepare('UPDATE galleries SET pin_locked_until = NULL, pin_version = pin_version + 1 WHERE id = ?').run(existing.id);
       db.prepare('DELETE FROM pin_attempts WHERE gallery_id = ? AND success = 0').run(existing.id);
     }
 

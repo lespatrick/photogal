@@ -9,14 +9,14 @@ export async function POST(
   const { slug } = await params;
 
   try {
-    const gallery = db.prepare('SELECT id, status, max_selections FROM galleries WHERE slug = ?').get(slug) as any;
+    const gallery = db.prepare('SELECT id, status, max_selections, pin_version FROM galleries WHERE slug = ?').get(slug) as any;
 
     if (!gallery || gallery.status === 'draft') {
       return NextResponse.json({ error: 'Galeria nie istnieje' }, { status: 404 });
     }
 
     const token = extractClientToken(req, gallery.id);
-    if (!token || !verifyClientToken(token, gallery.id)) {
+    if (!token || !verifyClientToken(token, gallery.id, gallery.pin_version)) {
       return NextResponse.json({ error: 'Brak autoryzacji' }, { status: 401 });
     }
 

@@ -14,14 +14,14 @@ export async function GET(
   const { slug } = await params;
 
   try {
-    const gallery = db.prepare('SELECT id, title, allow_zip_download, status FROM galleries WHERE slug = ?').get(slug) as any;
+    const gallery = db.prepare('SELECT id, title, allow_zip_download, status, pin_version FROM galleries WHERE slug = ?').get(slug) as any;
 
     if (!gallery || gallery.status === 'draft') {
       return new NextResponse('Galeria nie istnieje', { status: 404 });
     }
 
     const token = extractClientToken(req, gallery.id);
-    if (!token || !verifyClientToken(token, gallery.id)) {
+    if (!token || !verifyClientToken(token, gallery.id, gallery.pin_version)) {
       return new NextResponse('Brak autoryzacji', { status: 401 });
     }
 

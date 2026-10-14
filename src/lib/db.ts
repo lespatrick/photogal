@@ -47,6 +47,7 @@ export function initDatabase() {
       shoot_date TEXT NOT NULL,
       welcome_text TEXT,
       pin_code TEXT NOT NULL,
+      pin_version INTEGER NOT NULL DEFAULT 1,
       max_selections INTEGER DEFAULT 0,
       allow_zip_download INTEGER DEFAULT 0,
       status TEXT DEFAULT 'active', -- 'draft', 'active', 'submitted', 'archived'
@@ -131,13 +132,20 @@ export function initDatabase() {
     CREATE INDEX IF NOT EXISTS idx_selections_photo ON selections(photo_id);
     CREATE INDEX IF NOT EXISTS idx_authenticators_admin ON authenticators(admin_id);
     CREATE INDEX IF NOT EXISTS idx_pin_attempts_lookup ON pin_attempts(gallery_id, ip_hash, attempted_at);
+    CREATE INDEX IF NOT EXISTS idx_pin_attempts_attempted_at ON pin_attempts(attempted_at);
     CREATE INDEX IF NOT EXISTS idx_auth_challenges_lookup ON auth_challenges(challenge, user_type);
+    CREATE INDEX IF NOT EXISTS idx_auth_challenges_expires ON auth_challenges(expires_at);
     CREATE INDEX IF NOT EXISTS idx_admin_login_attempts ON admin_login_attempts(ip_hash, attempted_at);
+    CREATE INDEX IF NOT EXISTS idx_admin_login_attempts_attempted_at ON admin_login_attempts(attempted_at);
   `);
 
   // Safe migrations
   try {
     db.prepare('ALTER TABLE galleries ADD COLUMN pin_locked_until DATETIME').run();
+  } catch {}
+
+  try {
+    db.prepare('ALTER TABLE galleries ADD COLUMN pin_version INTEGER NOT NULL DEFAULT 1').run();
   } catch {}
 
   try {

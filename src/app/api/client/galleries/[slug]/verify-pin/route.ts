@@ -37,7 +37,7 @@ export async function POST(
     }
 
     const gallery = db.prepare(`
-      SELECT id, slug, pin_code, title, pin_locked_until, status 
+      SELECT id, slug, pin_code, title, pin_locked_until, status, pin_version 
       FROM galleries 
       WHERE slug = ?
     `).get(slug) as {
@@ -47,6 +47,7 @@ export async function POST(
       title: string;
       pin_locked_until: string | null;
       status: string;
+      pin_version?: number;
     } | undefined;
 
     if (!gallery || gallery.status === 'draft') {
@@ -174,7 +175,7 @@ export async function POST(
       }, { status: txResult.status });
     }
 
-    const token = createClientToken(gallery.id);
+    const token = createClientToken(gallery.id, gallery.pin_version || 1);
 
     const res = NextResponse.json({
       success: true,

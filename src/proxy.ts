@@ -29,14 +29,17 @@ export function proxy(req: NextRequest) {
   ].filter(Boolean);
 
   const isLoopback = hostname === 'localhost' || hostname === '127.0.0.1';
+  // Internal health check exemption (e.g. Docker container wget http://127.0.0.1:3000/ or local dev)
+  const isInternalLoopback = isLoopback && !forwardedProto;
 
   // Enforce allowed host whitelist if configured
   if (allowedHosts.length > 0 && !isLoopback && !allowedHosts.includes(hostname)) {
-    hostname = allowedHosts[0];
+    if (isHttp && !isInternalLoopback) {
+      hostname = allowedHosts[0];
+    } else {
+      return new NextResponse('Invalid Host', { status: 400 });
+    }
   }
-
-  // Internal health check exemption (e.g. Docker container wget http://127.0.0.1:3000/ or local dev)
-  const isInternalLoopback = isLoopback && !forwardedProto;
 
   if (isHttp && !isInternalLoopback) {
     // Exempt local development on localhost when not in production
