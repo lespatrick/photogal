@@ -144,15 +144,34 @@ export async function GET(
 
     // Support HTTP Range requests (RFC 7233) for resumable downloads and media streaming
     if (rangeHeader && rangeHeader.startsWith('bytes=')) {
-      const parts = rangeHeader.replace(/bytes=/, '').split('-');
-      const start = parseInt(parts[0], 10);
-      const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+      const match = rangeHeader.replace(/^bytes=/, '').trim();
+      const parts = match.split('-');
+      let start: number | null = parts[0] ? parseInt(parts[0], 10) : null;
+      let end: number | null = parts[1] ? parseInt(parts[1], 10) : null;
 
-      if (!isNaN(start) && start >= 0 && start < fileSize) {
-        const chunkEnd = Math.min(isNaN(end) ? fileSize - 1 : end, fileSize - 1);
+      // Handle suffix byte range: bytes=-500 (last 500 bytes)
+      if (start === null && end !== null && !isNaN(end) && end > 0) {
+        start = Math.max(0, fileSize - end);
+        end = fileSize - 1;
+      }
+
+      if (start !== null && !isNaN(start)) {
+        if (start >= fileSize || (end !== null && !isNaN(end) && start > end)) {
+          return new NextResponse(null, {
+            status: 416,
+            headers: {
+              'Content-Range': `bytes */${fileSize}`,
+            },
+          });
+        }
+
+        const chunkEnd = Math.min(end !== null && !isNaN(end) ? end : fileSize - 1, fileSize - 1);
         if (chunkEnd >= start) {
           const chunkSize = chunkEnd - start + 1;
           const rangeStream = fs.createReadStream(fullPath, { start, end: chunkEnd });
+          rangeStream.on('error', (err) => {
+            console.error('Media range stream error:', err);
+          });
           req.signal?.addEventListener('abort', () => {
             if (!rangeStream.destroyed) rangeStream.destroy();
           });
@@ -170,6 +189,9 @@ export async function GET(
 
     headers['Content-Length'] = fileSize.toString();
     const fileStream = fs.createReadStream(fullPath);
+    fileStream.on('error', (err) => {
+      console.error('Media file stream error:', err);
+    });
     req.signal?.addEventListener('abort', () => {
       if (!fileStream.destroyed) fileStream.destroy();
     });

@@ -63,7 +63,7 @@ export async function POST(req: NextRequest) {
       credentialDeviceType,
       credentialBackedUp ? 1 : 0,
       response.response?.transports ? JSON.stringify(response.response.transports) : null,
-      friendlyName?.trim() || 'Klucz dostępu (Passkey)'
+      typeof friendlyName === 'string' && friendlyName.trim() ? friendlyName.trim().slice(0, 100) : 'Klucz dostępu (Passkey)'
     );
 
     return NextResponse.json({

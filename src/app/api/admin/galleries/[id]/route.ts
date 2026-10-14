@@ -69,13 +69,13 @@ export async function PATCH(
       return NextResponse.json({ error: 'Galeria nie istnieje' }, { status: 404 });
     }
 
-    const newTitle = body.title !== undefined && body.title.trim() ? body.title.trim().slice(0, 200) : existing.title;
-    const newShootDate = body.shoot_date !== undefined ? body.shoot_date : existing.shoot_date;
+    const newTitle = body.title !== undefined && typeof body.title === 'string' && body.title.trim() ? body.title.trim().slice(0, 200) : existing.title;
+    const newShootDate = body.shoot_date !== undefined && typeof body.shoot_date === 'string' && body.shoot_date.trim() ? body.shoot_date.trim().slice(0, 50) : existing.shoot_date;
     const newWelcomeText = 'welcome_text' in body && typeof body.welcome_text === 'string' ? body.welcome_text.trim().slice(0, 3000) : existing.welcome_text;
     
     let newPin = existing.pin_code;
     let pinChanged = false;
-    if (body.pin_code !== undefined && String(body.pin_code).trim()) {
+    if (body.pin_code !== undefined && (typeof body.pin_code === 'string' || typeof body.pin_code === 'number') && String(body.pin_code).trim()) {
       const trimmed = String(body.pin_code).trim().slice(0, 32);
       if (trimmed !== existing.pin_code) {
         newPin = trimmed;
@@ -83,7 +83,7 @@ export async function PATCH(
       }
     }
 
-    const newMaxSelections = 'max_selections' in body ? (Number(body.max_selections) || 0) : existing.max_selections;
+    const newMaxSelections = 'max_selections' in body ? Math.max(0, parseInt(String(body.max_selections), 10) || 0) : existing.max_selections;
     const newAllowZip = 'allow_zip_download' in body ? (body.allow_zip_download ? 1 : 0) : existing.allow_zip_download;
     const ALLOWED_STATUSES = new Set(['draft', 'active', 'submitted', 'archived']);
     const newStatus = body.status !== undefined && ALLOWED_STATUSES.has(body.status) ? body.status : existing.status;
@@ -92,11 +92,14 @@ export async function PATCH(
     if ('cover_photo_id' in body) {
       if (body.cover_photo_id === null || body.cover_photo_id === '') {
         newCoverPhotoId = null;
-      } else {
-        const validPhoto = db.prepare('SELECT id FROM photos WHERE id = ? AND gallery_id = ?').get(body.cover_photo_id, existing.id);
-        if (validPhoto) {
-          newCoverPhotoId = body.cover_photo_id;
+      } else if (typeof body.cover_photo_id === 'string' && body.cover_photo_id.trim()) {
+        const validPhoto = db.prepare('SELECT id FROM photos WHERE id = ? AND gallery_id = ?').get(body.cover_photo_id.trim(), existing.id);
+        if (!validPhoto) {
+          return NextResponse.json({ error: 'Zdjęcie okładki nie istnieje w tej galerii' }, { status: 400 });
         }
+        newCoverPhotoId = (validPhoto as any).id;
+      } else {
+        return NextResponse.json({ error: 'Nieprawidłowy format cover_photo_id' }, { status: 400 });
       }
     }
 

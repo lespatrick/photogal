@@ -49,11 +49,17 @@ export async function POST(
       return NextResponse.json({ error: 'Nieprawidłowe dane żądania' }, { status: 400 });
     }
 
-    if (!photoId) {
-      return NextResponse.json({ error: 'Brak photoId' }, { status: 400 });
+    if (!photoId || typeof photoId !== 'string' || !photoId.trim()) {
+      return NextResponse.json({ error: 'Brak lub nieprawidłowe photoId' }, { status: 400 });
     }
 
-    const photo = db.prepare('SELECT id FROM photos WHERE id = ? AND gallery_id = ?').get(photoId, gallery.id);
+    if (action !== undefined && typeof action !== 'string') {
+      return NextResponse.json({ error: 'Nieprawidłowy parametr action' }, { status: 400 });
+    }
+
+    const cleanPhotoId = photoId.trim();
+
+    const photo = db.prepare('SELECT id FROM photos WHERE id = ? AND gallery_id = ?').get(cleanPhotoId, gallery.id);
     if (!photo) {
       return NextResponse.json({ error: 'Zdjęcie nie należy do tej galerii' }, { status: 404 });
     }
@@ -74,7 +80,7 @@ export async function POST(
         };
       }
 
-      const existingSelection = db.prepare('SELECT id FROM selections WHERE gallery_id = ? AND photo_id = ?').get(gallery.id, photoId);
+      const existingSelection = db.prepare('SELECT id FROM selections WHERE gallery_id = ? AND photo_id = ?').get(gallery.id, cleanPhotoId);
       let isSelected = false;
 
       if (action === 'like' || (!action && !existingSelection)) {
@@ -90,13 +96,13 @@ export async function POST(
           db.prepare('INSERT INTO selections (id, gallery_id, photo_id) VALUES (?, ?, ?)').run(
             crypto.randomUUID(),
             gallery.id,
-            photoId
+            cleanPhotoId
           );
         }
         isSelected = true;
       } else {
         if (existingSelection) {
-          db.prepare('DELETE FROM selections WHERE gallery_id = ? AND photo_id = ?').run(gallery.id, photoId);
+          db.prepare('DELETE FROM selections WHERE gallery_id = ? AND photo_id = ?').run(gallery.id, cleanPhotoId);
         }
         isSelected = false;
       }

@@ -21,8 +21,12 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    if (!currentPassword || !newPassword) {
+    if (typeof currentPassword !== 'string' || typeof newPassword !== 'string' || !currentPassword.trim() || !newPassword) {
       return NextResponse.json({ error: 'Wypełnij wszystkie wymagane pola' }, { status: 400 });
+    }
+
+    if (currentPassword.length > 128 || newPassword.length > 128) {
+      return NextResponse.json({ error: 'Hasło przekracza maksymalną dozwoloną długość (128 znaków)' }, { status: 400 });
     }
 
     if (newPassword.length < 6) {

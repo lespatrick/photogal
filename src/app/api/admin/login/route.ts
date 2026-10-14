@@ -54,6 +54,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Nazwa użytkownika i hasło są wymagane.' }, { status: 400 });
     }
 
+    if (username.length > 64 || password.length > 128) {
+      return NextResponse.json({ error: 'Nieprawidłowa długość danych logowania.' }, { status: 400 });
+    }
+
     const admin = db.prepare('SELECT * FROM admins WHERE username = ?').get(username.trim()) as {
       id: string;
       username: string;

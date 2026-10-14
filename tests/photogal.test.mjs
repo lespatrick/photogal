@@ -20,6 +20,7 @@ import {
 import {
   saveChallenge,
   consumeChallenge,
+  getWebAuthnConfig,
 } from '../src/lib/webauthn';
 import {
   resolveSafeStoragePath,
@@ -442,6 +443,55 @@ describe('Photogal Core & Security Integration Test Suite', () => {
     const activeDb = db.default || db;
     const checkpoint = activeDb.pragma('wal_autocheckpoint', { simple: true });
     assert.equal(Number(checkpoint), 1000, 'wal_autocheckpoint must be configured to 1000 pages');
+  });
+
+  test('consumeChallenge strictly rejects NULL admin_id challenges when expectedAdminId is required', () => {
+    const unboundChallenge = 'test-unbound-challenge-' + Date.now();
+    saveChallenge(unboundChallenge, 'admin_register'); // admin_id is NULL
+
+    // An admin attempting to consume an unbound challenge with expectedAdminId MUST fail
+    const consumed = consumeChallenge(unboundChallenge, 'admin_register', 'admin-uuid-999');
+    assert.equal(consumed, false, 'Unbound challenge must not be consumed when expectedAdminId is required');
+
+    // But it can still be consumed when expectedAdminId is omitted (e.g. login flow)
+    const consumedWithoutId = consumeChallenge(unboundChallenge, 'admin_register');
+    assert.equal(consumedWithoutId, true, 'Unbound challenge can be consumed when expectedAdminId is omitted');
+  });
+
+  test('getWebAuthnConfig respects ALLOWED_HOSTS whitelist and ignores arbitrary Host headers', () => {
+    process.env.ALLOWED_HOSTS = 'photogal.studio,gallery.photogal.studio';
+    try {
+      const maliciousReq = new Request('http://photogal.studio/api/admin/passkey/login-options', {
+        headers: {
+          'host': 'evil-phishing-domain.com',
+          'x-forwarded-proto': 'https',
+        },
+      });
+
+      const config = getWebAuthnConfig(maliciousReq);
+      assert.equal(config.rpID, 'photogal.studio', 'rpID must be locked to allowed hosts');
+      assert.equal(config.origin, 'https://photogal.studio', 'origin must be locked to allowed hosts');
+    } finally {
+      delete process.env.ALLOWED_HOSTS;
+    }
+  });
+
+  test('Proxy strictly sets Content-Security-Policy and Permissions-Policy security headers', () => {
+    const req = new NextRequest('https://photogal.studio/admin', {
+      headers: {
+        'host': 'photogal.studio',
+        'x-forwarded-proto': 'https',
+      },
+    });
+
+    const res = proxy(req);
+    const csp = res.headers.get('Content-Security-Policy');
+    const perm = res.headers.get('Permissions-Policy');
+
+    assert.ok(csp, 'Content-Security-Policy must be set');
+    assert.ok(csp.includes("default-src 'self'"), 'CSP must include default-src self');
+    assert.ok(perm, 'Permissions-Policy must be set');
+    assert.ok(perm.includes('camera=()'), 'Permissions-Policy must disable camera');
   });
 });
 

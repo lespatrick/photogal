@@ -27,8 +27,13 @@ export async function POST(
       return NextResponse.json({ error: 'Nieprawidłowe dane żądania' }, { status: 400 });
     }
 
-    if (!pin) {
+    const cleanPin = (typeof pin === 'string' || typeof pin === 'number') ? String(pin).trim() : '';
+    if (!cleanPin) {
       return NextResponse.json({ error: 'Podaj kod PIN' }, { status: 400 });
+    }
+
+    if (cleanPin.length > 32) {
+      return NextResponse.json({ error: 'Nieprawidłowy format kodu PIN' }, { status: 400 });
     }
 
     const gallery = db.prepare(`
@@ -58,7 +63,7 @@ export async function POST(
 
     const clientIp = extractClientIp(req);
     const ipHash = crypto.createHash('sha256').update(clientIp + getAuthSecret()).digest('hex');
-    const isPinCorrect = secureComparePins(pin.toString(), gallery.pin_code);
+    const isPinCorrect = secureComparePins(cleanPin, gallery.pin_code);
 
     const txResult = db.transaction(() => {
       // Re-check if gallery is locked by photographer or system hard lockout

@@ -32,10 +32,10 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: 'Nieprawidłowe dane żądania' }, { status: 400 });
   }
 
-  if (!id) {
-    return NextResponse.json({ error: 'Brak ID klucza' }, { status: 400 });
+  if (!id || typeof id !== 'string' || !id.trim()) {
+    return NextResponse.json({ error: 'Brak lub nieprawidłowe ID klucza' }, { status: 400 });
   }
 
-  db.prepare('DELETE FROM authenticators WHERE id = ? AND admin_id = ?').run(id, adminId);
+  db.prepare('DELETE FROM authenticators WHERE id = ? AND admin_id = ?').run(id.trim(), adminId);
   return NextResponse.json({ success: true });
 }

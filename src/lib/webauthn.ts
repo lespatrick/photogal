@@ -11,9 +11,21 @@ export function getWebAuthnConfig(req: Request) {
   const rawProto = req.headers.get('x-forwarded-proto') || url.protocol.replace(':', '');
   const proto = rawProto === 'https' || (process.env.NODE_ENV === 'production') ? 'https' : 'http';
 
-  const hostname = safeHost.split(':')[0] || 'localhost';
+  let hostname = safeHost.split(':')[0] || 'localhost';
+  const port = safeHost.includes(':') ? `:${safeHost.split(':')[1]}` : '';
+  const isLoopback = hostname === 'localhost' || hostname === '127.0.0.1';
+
+  const allowedHosts = [
+    ...(process.env.ALLOWED_HOSTS ? process.env.ALLOWED_HOSTS.split(',').map((h) => h.trim().toLowerCase()) : []),
+    ...(process.env.RP_ID ? [process.env.RP_ID.trim().toLowerCase()] : []),
+  ].filter(Boolean);
+
+  if (allowedHosts.length > 0 && !isLoopback && !allowedHosts.includes(hostname.toLowerCase())) {
+    hostname = allowedHosts[0];
+  }
+
   const rpID = envRpId || hostname;
-  const origin = envOrigin || `${proto}://${safeHost}`;
+  const origin = envOrigin || `${proto}://${hostname}${port}`;
   const rpName = 'photogal';
 
   return { rpName, rpID, origin };
@@ -50,7 +62,7 @@ export function consumeChallenge(
     const params: any[] = [challenge, userType, now];
 
     if (expectedAdminId) {
-      sql += ' AND (admin_id = ? OR admin_id IS NULL)';
+      sql += ' AND admin_id = ?';
       params.push(expectedAdminId);
     }
 
@@ -64,7 +76,7 @@ export function consumeChallenge(
       const selParams: any[] = [challenge, userType, now];
 
       if (expectedAdminId) {
-        selSql += ' AND (admin_id = ? OR admin_id IS NULL)';
+        selSql += ' AND admin_id = ?';
         selParams.push(expectedAdminId);
       }
 
