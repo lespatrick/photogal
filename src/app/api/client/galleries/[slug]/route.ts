@@ -57,6 +57,7 @@ export async function GET(
 
     const res = NextResponse.json({
       unlocked: true,
+      token: token || undefined,
       gallery,
       photos,
       selectedIds,

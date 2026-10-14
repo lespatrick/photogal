@@ -71,6 +71,11 @@ export default function AdminLoginPage() {
       const optData = await parseJsonResponse(optRes);
       if (!optRes.ok) throw new Error(optData.error || 'Błąd pobierania opcji logowania');
 
+      if (!optData.hasRegisteredPasskeys || !optData.options) {
+        toast('Brak zarejestrowanych kluczy Passkey na tym koncie. Zaloguj się hasłem.', 'info');
+        return;
+      }
+
       // 2. Trigger native WebAuthn biometric prompt (Touch ID / Face ID)
       const authResponse = await startAuthentication({
         optionsJSON: optData.options,

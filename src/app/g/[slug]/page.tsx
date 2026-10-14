@@ -94,6 +94,9 @@ export default function ClientGalleryPage({
 
       if (data.unlocked) {
         setUnlocked(true);
+        if (data.token) {
+          localStorage.setItem(`photogal_token_${slug}`, data.token);
+        }
         setGallery(data.gallery);
         setPhotos(data.photos || []);
         setSelectedIds(new Set(data.selectedIds || []));
@@ -150,7 +153,6 @@ export default function ClientGalleryPage({
     }
 
     const token = getClientToken();
-    if (!token) return;
 
     let isCurrentlySelected = false;
     setSelectedIds((prev) => {
@@ -165,12 +167,16 @@ export default function ClientGalleryPage({
     });
 
     try {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (token) {
+        headers['x-client-token'] = token;
+      }
+
       const res = await fetch(`/api/client/galleries/${slug}/selections`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-client-token': token,
-        },
+        headers,
         body: JSON.stringify({
           photoId,
           action: isCurrentlySelected ? 'unlike' : 'like',
@@ -179,6 +185,11 @@ export default function ClientGalleryPage({
 
       const data = await parseJsonResponse(res);
       if (!res.ok) {
+        if (res.status === 401) {
+          setUnlocked(false);
+          toast('Wymagane ponowne wprowadzenie kodu PIN', 'info');
+          return;
+        }
         // Rollback this toggle
         setSelectedIds((prev) => {
           const next = new Set(prev);
@@ -263,25 +274,35 @@ export default function ClientGalleryPage({
 
   const handleFinalize = async () => {
     const token = getClientToken();
-    if (!token) return;
 
     setSubmittingFinal(true);
     try {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (token) {
+        headers['x-client-token'] = token;
+      }
+
       const res = await fetch(`/api/client/galleries/${slug}/finalize`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-client-token': token,
-        },
+        headers,
         body: JSON.stringify({ notes: clientNotes }),
       });
 
       const data = await parseJsonResponse(res);
-      if (!res.ok) throw new Error(data.error || 'Błąd finalizacji');
+      if (!res.ok) {
+        if (res.status === 401) {
+          setUnlocked(false);
+          toast('Wymagane ponowne wprowadzenie kodu PIN', 'info');
+          return;
+        }
+        throw new Error(data.error || 'Błąd finalizacji');
+      }
 
       toast('Selekcja została pomyślnie przesłana.', 'success');
-      setFinalizeOpen(false);
       setGallery((prev) => (prev ? { ...prev, status: 'submitted' } : null));
+      setFinalizeOpen(false);
     } catch (err: any) {
       toast(err.message, 'error');
     } finally {
@@ -544,7 +565,7 @@ export default function ClientGalleryPage({
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             {gallery?.allow_zip_download === 1 && isSubmitted && (
               <a
-                href={`/api/client/galleries/${slug}/zip?token=${getClientToken()}`}
+                href={`/api/client/galleries/${slug}/zip${getClientToken() ? `?token=${encodeURIComponent(getClientToken()!)}` : ''}`}
                 download
                 className="btn btn-secondary"
                 style={{ fontSize: '0.8rem', padding: '0.45rem 0.85rem' }}

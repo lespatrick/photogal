@@ -61,7 +61,7 @@ export async function POST(req: NextRequest) {
     }
 
     const id = crypto.randomUUID();
-    let baseSlug = slugify(title);
+    const baseSlug = slugify(title);
     let finalSlug = baseSlug;
     let counter = 1;
 
@@ -71,21 +71,37 @@ export async function POST(req: NextRequest) {
     }
 
     // Default PIN: 4 random digits if not provided
-    const finalPin = pin_code?.trim() || crypto.randomInt(1000, 10000).toString();
+    const finalPin = pin_code?.trim() ? String(pin_code).trim().slice(0, 32) : crypto.randomInt(1000, 10000).toString();
+    const safeTitle = title.trim().slice(0, 200);
+    const safeWelcome = welcome_text && typeof welcome_text === 'string' ? welcome_text.trim().slice(0, 3000) : '';
 
-    db.prepare(`
-      INSERT INTO galleries (id, slug, title, shoot_date, welcome_text, pin_code, max_selections, allow_zip_download, status)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active')
-    `).run(
-      id,
-      finalSlug,
-      title.trim(),
-      shoot_date,
-      welcome_text?.trim() || '',
-      finalPin,
-      Number(max_selections) || 0,
-      allow_zip_download ? 1 : 0
-    );
+    let inserted = false;
+    let attempts = 0;
+    while (!inserted && attempts < 50) {
+      try {
+        db.prepare(`
+          INSERT INTO galleries (id, slug, title, shoot_date, welcome_text, pin_code, max_selections, allow_zip_download, status)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active')
+        `).run(
+          id,
+          finalSlug,
+          safeTitle,
+          shoot_date,
+          safeWelcome,
+          finalPin,
+          Number(max_selections) || 0,
+          allow_zip_download ? 1 : 0
+        );
+        inserted = true;
+      } catch (insertErr: any) {
+        if (insertErr?.code === 'SQLITE_CONSTRAINT_UNIQUE' || insertErr?.message?.includes('UNIQUE')) {
+          finalSlug = `${baseSlug}-${counter++}`;
+          attempts++;
+        } else {
+          throw insertErr;
+        }
+      }
+    }
 
     const created = db.prepare('SELECT * FROM galleries WHERE id = ?').get(id);
     return NextResponse.json({ gallery: created }, { status: 201 });

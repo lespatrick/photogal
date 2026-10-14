@@ -69,10 +69,20 @@ export async function PATCH(
       return NextResponse.json({ error: 'Galeria nie istnieje' }, { status: 404 });
     }
 
-    const newTitle = body.title !== undefined && body.title.trim() ? body.title.trim() : existing.title;
+    const newTitle = body.title !== undefined && body.title.trim() ? body.title.trim().slice(0, 200) : existing.title;
     const newShootDate = body.shoot_date !== undefined ? body.shoot_date : existing.shoot_date;
-    const newWelcomeText = 'welcome_text' in body ? body.welcome_text : existing.welcome_text;
-    const newPin = body.pin_code !== undefined && String(body.pin_code).trim() ? String(body.pin_code).trim() : existing.pin_code;
+    const newWelcomeText = 'welcome_text' in body && typeof body.welcome_text === 'string' ? body.welcome_text.trim().slice(0, 3000) : existing.welcome_text;
+    
+    let newPin = existing.pin_code;
+    let pinChanged = false;
+    if (body.pin_code !== undefined && String(body.pin_code).trim()) {
+      const trimmed = String(body.pin_code).trim().slice(0, 32);
+      if (trimmed !== existing.pin_code) {
+        newPin = trimmed;
+        pinChanged = true;
+      }
+    }
+
     const newMaxSelections = 'max_selections' in body ? (Number(body.max_selections) || 0) : existing.max_selections;
     const newAllowZip = 'allow_zip_download' in body ? (body.allow_zip_download ? 1 : 0) : existing.allow_zip_download;
     const ALLOWED_STATUSES = new Set(['draft', 'active', 'submitted', 'archived']);
@@ -114,6 +124,11 @@ export async function PATCH(
       newCoverPhotoId,
       existing.id
     );
+
+    if (pinChanged) {
+      db.prepare('UPDATE galleries SET pin_locked_until = NULL WHERE id = ?').run(existing.id);
+      db.prepare('DELETE FROM pin_attempts WHERE gallery_id = ? AND success = 0').run(existing.id);
+    }
 
     const updated = db.prepare('SELECT * FROM galleries WHERE id = ?').get(existing.id);
     return NextResponse.json({ gallery: updated });

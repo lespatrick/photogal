@@ -4,7 +4,7 @@ import fs from 'fs';
 import { Readable } from 'stream';
 import db from '@/lib/db';
 import { verifyAdminSession, verifyClientToken, extractClientToken } from '@/lib/auth';
-import { resolveSafeStoragePath } from '@/lib/storage';
+import { getFilePath, getSafeGalleryBase } from '@/lib/storage';
 
 export async function GET(
   req: NextRequest,
@@ -18,18 +18,26 @@ export async function GET(
     }
 
     const galleryId = filePathArray[1];
-    const mediaType = filePathArray[2]; // 'thumb' | 'preview' | 'original'
+    const mediaType = filePathArray[2] as 'thumb' | 'preview' | 'original';
+    const rawFileName = filePathArray[3];
 
     if (!['thumb', 'preview', 'original'].includes(mediaType)) {
       return new NextResponse('File not found', { status: 404 });
     }
 
-    const relativePath = filePathArray.join('/');
-    const fullPath = resolveSafeStoragePath(relativePath);
-
-    if (!fullPath || !fs.existsSync(fullPath)) {
+    const safeFileName = path.basename(rawFileName.trim());
+    if (!safeFileName || safeFileName === '.' || safeFileName === '..' || safeFileName !== rawFileName) {
       return new NextResponse('File not found', { status: 404 });
     }
+
+    const galleryBase = getSafeGalleryBase(galleryId);
+    const fullPath = getFilePath(galleryId, mediaType, safeFileName);
+
+    if (!fullPath || !galleryBase || !fullPath.startsWith(galleryBase + path.sep) || !fs.existsSync(fullPath)) {
+      return new NextResponse('File not found', { status: 404 });
+    }
+
+    const relativePath = `galleries/${path.basename(galleryId)}/${mediaType}/${safeFileName}`;
 
     const isAdmin = await verifyAdminSession();
 
@@ -123,6 +131,7 @@ export async function GET(
       'ETag': etag,
       'Last-Modified': stat.mtime.toUTCString(),
       'Cache-Control': 'private, max-age=86400',
+      'X-Content-Type-Options': 'nosniff',
     };
 
     if (mediaType === 'original') {

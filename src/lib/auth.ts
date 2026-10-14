@@ -182,7 +182,7 @@ export function extractClientToken(req: NextRequest, galleryId?: string): string
   if (headerToken) return headerToken;
 
   const queryToken = req.nextUrl.searchParams.get('token');
-  if (queryToken) return queryToken;
+  if (queryToken && queryToken !== 'null' && queryToken !== 'undefined') return queryToken;
 
   if (galleryId) {
     const cookieToken = req.cookies.get(`${CLIENT_COOKIE_PREFIX}${galleryId}`)?.value;

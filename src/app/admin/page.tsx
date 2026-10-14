@@ -257,10 +257,13 @@ export default function AdminDashboardPage() {
     const origin = typeof window !== 'undefined' ? window.location.origin : '';
     const link = `${origin}/g/${slug}`;
     const textToCopy = `Link do galerii: ${link}\nPIN: ${pin}`;
-    navigator.clipboard.writeText(textToCopy);
-    setCopiedId(id);
-    toast('Skopiowano link i PIN', 'success');
-    setTimeout(() => setCopiedId(null), 2000);
+    navigator.clipboard?.writeText(textToCopy).then(() => {
+      setCopiedId(id);
+      toast('Skopiowano link i PIN', 'success');
+      setTimeout(() => setCopiedId(null), 2000);
+    }).catch(() => {
+      toast('Nie udało się skopiować linku', 'error');
+    });
   };
 
   const handleConfirmDeleteGallery = async () => {

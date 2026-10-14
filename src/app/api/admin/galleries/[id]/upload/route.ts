@@ -54,24 +54,30 @@ export async function POST(
         const processed = await processAndSavePhoto(actualId, originalName, buffer);
 
         const photoId = crypto.randomUUID();
-        db.prepare(`
-          INSERT INTO photos (
-            id, gallery_id, filename, original_path, thumb_path, preview_path,
-            width, height, aspect_ratio, file_size, order_index
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `).run(
-          photoId,
-          actualId,
-          processed.filename,
-          processed.originalRelativePath,
-          processed.thumbRelativePath,
-          processed.previewRelativePath,
-          processed.width,
-          processed.height,
-          processed.aspectRatio,
-          processed.fileSize,
-          nextOrder++
-        );
+        try {
+          db.prepare(`
+            INSERT INTO photos (
+              id, gallery_id, filename, original_path, thumb_path, preview_path,
+              width, height, aspect_ratio, file_size, order_index
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `).run(
+            photoId,
+            actualId,
+            processed.filename,
+            processed.originalRelativePath,
+            processed.thumbRelativePath,
+            processed.previewRelativePath,
+            processed.width,
+            processed.height,
+            processed.aspectRatio,
+            processed.fileSize,
+            nextOrder++
+          );
+        } catch (dbErr) {
+          const { deletePhotoFiles } = await import('@/lib/storage');
+          deletePhotoFiles(actualId, processed.originalRelativePath, processed.thumbRelativePath, processed.previewRelativePath);
+          throw dbErr;
+        }
 
         insertedPhotos.push({
           id: photoId,

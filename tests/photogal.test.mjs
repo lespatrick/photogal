@@ -5,6 +5,7 @@ import fs from 'fs';
 import { PassThrough } from 'stream';
 import { ZipArchive } from 'archiver';
 
+import crypto from 'crypto';
 import db, { parseSqliteDate } from '../src/lib/db';
 import {
   hashPassword,
@@ -25,6 +26,7 @@ import {
   deletePhotoFiles,
   deleteGalleryStorage,
   getSafeGalleryBase,
+  getFilePath,
   STORAGE_DIR,
 } from '../src/lib/storage';
 
@@ -254,5 +256,54 @@ describe('Photogal Core & Security Integration Test Suite', () => {
     const indices = activeDb.prepare("PRAGMA index_list('auth_challenges')").all();
     const hasCompositeIndex = indices.some((idx) => idx.name === 'idx_auth_challenges_lookup');
     assert.equal(hasCompositeIndex, true, 'auth_challenges must have idx_auth_challenges_lookup index');
+  });
+
+  test('getFilePath strictly confines media files to target gallery directory and defeats cross-gallery traversal', () => {
+    const galA = 'gallery-alpha';
+    const galB = 'gallery-beta';
+
+    const validPath = getFilePath(galA, 'thumb', 'photo_1.webp');
+    assert.equal(validPath, path.resolve(STORAGE_DIR, 'galleries', galA, 'thumb', 'photo_1.webp'));
+
+    // Attempt traversal across galleries via filename
+    const traversalAttempt = getFilePath(galA, 'thumb', `../../${galB}/original/secret.jpg`);
+    assert.equal(traversalAttempt, path.resolve(STORAGE_DIR, 'galleries', galA, 'thumb', 'secret.jpg'), 'Must be confined to gallery-alpha and cannot escape into gallery-beta');
+  });
+
+  test('extractClientToken ignores literal null or undefined strings in searchParams', () => {
+    const fakeReqWithLiteralNull = {
+      headers: new Headers(),
+      nextUrl: new URL('http://localhost:3000/api/test?token=null'),
+      cookies: {
+        get: (name) => (name === 'photogal_client_gal-test' ? { value: 'real-valid-cookie-token' } : undefined),
+        getAll: () => [],
+      },
+    };
+
+    const token = extractClientToken(fakeReqWithLiteralNull, 'gal-test');
+    assert.equal(token, 'real-valid-cookie-token', 'Must ignore token=null and fall back to valid cookie');
+  });
+
+  test('SHA-256 constant-time PIN comparison handles any length without buffer truncation anomalies', () => {
+    function secureComparePins(a, b) {
+      const strA = (a || '').trim();
+      const strB = (b || '').trim();
+      if (!strA || !strB) return false;
+      const hashA = crypto.createHash('sha256').update(strA).digest();
+      const hashB = crypto.createHash('sha256').update(strB).digest();
+      return crypto.timingSafeEqual(hashA, hashB);
+    }
+
+    assert.equal(secureComparePins('2026', '2026'), true);
+    assert.equal(secureComparePins(' 2026 ', '2026'), true);
+    assert.equal(secureComparePins('2026', '2027'), false);
+    assert.equal(secureComparePins('', ''), false);
+    assert.equal(secureComparePins('   ', '   '), false);
+
+    // Strings longer than 32 characters
+    const long1 = 'A'.repeat(50) + '1';
+    const long2 = 'A'.repeat(50) + '2';
+    assert.equal(secureComparePins(long1, long1), true);
+    assert.equal(secureComparePins(long1, long2), false, 'Must not collide or truncate at 32 bytes');
   });
 });

@@ -6,13 +6,10 @@ import { createClientToken, getAuthSecret, extractClientIp } from '@/lib/auth';
 function secureComparePins(a: string, b: string): boolean {
   const strA = (a || '').trim();
   const strB = (b || '').trim();
-  const maxLen = 32;
-  const bufA = Buffer.alloc(maxLen, 0);
-  const bufB = Buffer.alloc(maxLen, 0);
-  bufA.write(strA);
-  bufB.write(strB);
-  const isMatch = crypto.timingSafeEqual(bufA, bufB);
-  return isMatch && strA.length === strB.length;
+  if (!strA || !strB) return false;
+  const hashA = crypto.createHash('sha256').update(strA).digest();
+  const hashB = crypto.createHash('sha256').update(strB).digest();
+  return crypto.timingSafeEqual(hashA, hashB);
 }
 
 export async function POST(
@@ -89,10 +86,10 @@ export async function POST(
         };
       }
 
-      // Check gallery-wide failed attempts in the last 15 minutes
+      // Check total gallery-wide failed attempts since last photographer reset
       const totalGalleryFails = (db.prepare(`
         SELECT COUNT(*) as count FROM pin_attempts
-        WHERE gallery_id = ? AND success = 0 AND attempted_at > datetime('now', '-15 minutes')
+        WHERE gallery_id = ? AND success = 0
       `).get(gallery.id) as any)?.count || 0;
 
       if (!isPinCorrect) {

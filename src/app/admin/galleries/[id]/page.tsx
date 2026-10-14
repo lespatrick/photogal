@@ -173,7 +173,10 @@ export default function GalleryManagementPage({
 
           const data = await parseJsonResponse(res);
           if (res.ok) {
-            totalUploaded += data.count || chunk.length;
+            totalUploaded += data.count || 0;
+            if (data.errors && Array.isArray(data.errors)) {
+              failedCount += data.errors.length;
+            }
           } else {
             failedCount += chunk.length;
           }
