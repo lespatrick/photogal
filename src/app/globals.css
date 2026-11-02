@@ -379,6 +379,9 @@ input, textarea, select {
   overflow: hidden;
   border-radius: var(--radius-xs);
   transition: opacity var(--transition-normal);
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
 }
 
 .masonry-item img {
@@ -386,6 +389,11 @@ input, textarea, select {
   height: auto;
   display: block;
   transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), filter var(--transition-normal);
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-user-drag: none;
+  -webkit-touch-callout: none;
+  pointer-events: none;
 }
 
 .masonry-item:hover img {
@@ -523,6 +531,9 @@ input, textarea, select {
   justify-content: space-between;
   animation: fadeIn 0.2s ease-out;
   touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
 }
 
 .lightbox-header {
@@ -558,6 +569,8 @@ input, textarea, select {
   align-items: center;
   justify-content: center;
   user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
 }
 
 .lightbox-image {
@@ -565,6 +578,20 @@ input, textarea, select {
   max-height: 86vh;
   object-fit: contain;
   transition: transform var(--transition-fast);
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-user-drag: none;
+  -webkit-touch-callout: none;
+}
+
+.lightbox-image-shield {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
 }
 
 .lightbox-nav-btn {

@@ -238,6 +238,8 @@ export default function ClientGalleryPage({
       }
       if (e.key === 'Escape') {
         setLightboxIndex(null);
+      } else if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) {
+        e.preventDefault();
       } else if (e.key === 'ArrowRight') {
         if (currentList.length <= 1) return;
         setLightboxIndex((prev) => (prev !== null && prev < currentList.length - 1 ? prev + 1 : 0));
@@ -545,11 +547,14 @@ export default function ClientGalleryPage({
                   key={photo.id}
                   className={`masonry-item ${isSelected ? 'is-selected' : ''}`}
                   onClick={() => setLightboxIndex(index)}
+                  onContextMenu={(e) => e.preventDefault()}
                 >
                   <img
                     src={`/api/media/${photo.thumb_path}`}
                     alt={photo.filename}
                     loading="lazy"
+                    draggable={false}
+                    onDragStart={(e) => e.preventDefault()}
                   />
 
                   {/* Minimalist Overlay */}
@@ -687,6 +692,7 @@ export default function ClientGalleryPage({
       {lightboxIndex !== null && currentLightboxPhoto && (
         <div
           className="lightbox-backdrop"
+          onContextMenu={(e) => e.preventDefault()}
           onTouchStart={handleTouchStart}
           onTouchMove={handleTouchMove}
           onTouchEnd={handleTouchEnd}
@@ -748,6 +754,13 @@ export default function ClientGalleryPage({
                 src={`/api/media/${currentLightboxPhoto.preview_path}`}
                 alt={currentLightboxPhoto.filename}
                 className="lightbox-image"
+                draggable={false}
+                onDragStart={(e) => e.preventDefault()}
+              />
+              <div
+                className="lightbox-image-shield"
+                onContextMenu={(e) => e.preventDefault()}
+                onDragStart={(e) => e.preventDefault()}
               />
             </div>
 
