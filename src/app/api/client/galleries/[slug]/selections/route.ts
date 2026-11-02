@@ -44,7 +44,7 @@ export async function POST(
       }, { status: 403 });
     }
 
-    if (gallery.status !== 'active') {
+    if (gallery.status !== 'active' && gallery.status !== 'delivered') {
       return NextResponse.json({
         error: 'Galeria nie jest aktywna. Edycja selekcji jest zablokowana.',
         locked: true,
@@ -83,7 +83,7 @@ export async function POST(
         max_selections: number;
       } | undefined;
 
-      if (!current || current.status !== 'active') {
+      if (!current || (current.status !== 'active' && current.status !== 'delivered')) {
         return {
           locked: true,
           error: current?.status === 'submitted'
@@ -98,7 +98,7 @@ export async function POST(
       if (action === 'like' || (!action && !existingSelection)) {
         if (!existingSelection) {
           const currentCount = (db.prepare('SELECT COUNT(*) as count FROM selections WHERE gallery_id = ?').get(gallery.id) as any)?.count || 0;
-          if (current.max_selections > 0 && currentCount >= current.max_selections) {
+          if (current.status !== 'delivered' && current.max_selections > 0 && currentCount >= current.max_selections) {
             return {
               limitReached: true,
               error: `Osiągnięto maksymalną liczbę wybranych zdjęć w pakiecie (${current.max_selections}). Odznacz inne zdjęcie, aby dodać nowe.`,

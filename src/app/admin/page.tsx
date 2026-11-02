@@ -20,7 +20,7 @@ interface GalleryItem {
   welcome_text: string;
   max_selections: number;
   allow_zip_download: number;
-  status: 'draft' | 'active' | 'submitted' | 'archived';
+  status: 'draft' | 'active' | 'submitted' | 'archived' | 'delivered';
   cover_thumb?: string;
   fallback_thumb?: string;
   total_photos: number;
@@ -427,6 +427,18 @@ export default function AdminDashboardPage() {
                       {item.status === 'submitted' ? (
                         <span className="badge badge-submitted">
                           Zakończona
+                        </span>
+                      ) : item.status === 'delivered' ? (
+                        <span className="badge badge-delivered">
+                          Dostarczona
+                        </span>
+                      ) : item.status === 'archived' ? (
+                        <span className="badge badge-archived">
+                          Zarchiwizowana
+                        </span>
+                      ) : item.status === 'draft' ? (
+                        <span className="badge badge-draft">
+                          Szkic
                         </span>
                       ) : (
                         <span className="badge badge-active">

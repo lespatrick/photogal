@@ -61,20 +61,30 @@ export async function GET(
       zipRateLimitMap.set(rlKey, { count: 1, resetAt: now + 5 * 60 * 1000 });
     }
 
-    if (!gallery.allow_zip_download || gallery.status !== 'submitted') {
+    const isDelivered = gallery.status === 'delivered';
+    const isSubmittedWithZip = gallery.status === 'submitted' && Boolean(gallery.allow_zip_download);
+
+    if (!isDelivered && !isSubmittedWithZip) {
       return new NextResponse('Pobieranie archiwum ZIP nie jest obecnie udostępnione dla tej galerii.', { status: 403 });
     }
 
-    const photos = db.prepare(`
-      SELECT p.filename, p.original_path
-      FROM selections s
-      JOIN photos p ON p.id = s.photo_id
-      WHERE s.gallery_id = ?
-      ORDER BY p.order_index ASC, p.created_at ASC
-    `).all(gallery.id) as { filename: string; original_path: string }[];
+    const photos = isDelivered
+      ? db.prepare(`
+          SELECT p.filename, p.original_path
+          FROM photos p
+          WHERE p.gallery_id = ?
+          ORDER BY p.order_index ASC, p.created_at ASC
+        `).all(gallery.id) as { filename: string; original_path: string }[]
+      : db.prepare(`
+          SELECT p.filename, p.original_path
+          FROM selections s
+          JOIN photos p ON p.id = s.photo_id
+          WHERE s.gallery_id = ?
+          ORDER BY p.order_index ASC, p.created_at ASC
+        `).all(gallery.id) as { filename: string; original_path: string }[];
 
     if (photos.length === 0) {
-      return new NextResponse('Brak wybranych zdjęć do pobrania', { status: 400 });
+      return new NextResponse(isDelivered ? 'Brak zdjęć w galerii do pobrania' : 'Brak wybranych zdjęć do pobrania', { status: 400 });
     }
 
     // zlib level 0 (Store mode): Photos are already compressed WebP/JPEGs. Level 0 streams instantly without high CPU load.
@@ -126,7 +136,8 @@ export async function GET(
     });
 
     const asciiFallback = gallery.title.replace(/[^a-zA-Z0-9_-]/g, '_') || 'galeria';
-    const encodedTitle = encodeURIComponent(`Wybrane_${gallery.title}.zip`);
+    const zipPrefix = isDelivered ? 'Wszystkie_' : 'Wybrane_';
+    const encodedTitle = encodeURIComponent(`${zipPrefix}${gallery.title}.zip`);
 
     const webStream = Readable.toWeb(passThrough);
 
@@ -134,7 +145,7 @@ export async function GET(
       status: 200,
       headers: {
         'Content-Type': 'application/zip',
-        'Content-Disposition': `attachment; filename="Wybrane_${asciiFallback}.zip"; filename*=UTF-8''${encodedTitle}`,
+        'Content-Disposition': `attachment; filename="${zipPrefix}${asciiFallback}.zip"; filename*=UTF-8''${encodedTitle}`,
       },
     });
   } catch (error) {

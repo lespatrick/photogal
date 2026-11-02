@@ -96,7 +96,7 @@ export async function PATCH(
 
     const newMaxSelections = 'max_selections' in body ? Math.max(0, parseInt(String(body.max_selections), 10) || 0) : existing.max_selections;
     const newAllowZip = 'allow_zip_download' in body ? (body.allow_zip_download ? 1 : 0) : existing.allow_zip_download;
-    const ALLOWED_STATUSES = new Set(['draft', 'active', 'submitted', 'archived']);
+    const ALLOWED_STATUSES = new Set(['draft', 'active', 'submitted', 'archived', 'delivered']);
     const newStatus = body.status !== undefined && ALLOWED_STATUSES.has(body.status) ? body.status : existing.status;
     
     let newCoverPhotoId = existing.cover_photo_id;

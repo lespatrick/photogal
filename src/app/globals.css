@@ -292,6 +292,25 @@ input, textarea, select {
   font-weight: 600;
 }
 
+.badge-delivered {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-strong);
+  font-weight: 600;
+}
+
+.badge-archived {
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--border-hairline);
+}
+
+.badge-draft {
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px dashed var(--border-subtle);
+}
+
 /* Minimal Navbar */
 .navbar {
   position: sticky;

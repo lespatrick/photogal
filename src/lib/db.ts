@@ -56,7 +56,7 @@ export function initDatabase() {
       pin_version INTEGER NOT NULL DEFAULT 1,
       max_selections INTEGER DEFAULT 0,
       allow_zip_download INTEGER DEFAULT 0,
-      status TEXT DEFAULT 'active', -- 'draft', 'active', 'submitted', 'archived'
+      status TEXT DEFAULT 'active', -- 'draft', 'active', 'submitted', 'archived', 'delivered'
       cover_photo_id TEXT,
       client_notes TEXT,
       submitted_at DATETIME,

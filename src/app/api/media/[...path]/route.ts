@@ -100,19 +100,24 @@ export async function GET(
       } else {
         // Client is authorized. Check restrictions on original camera files
         if (mediaType === 'original') {
-          if (!gallery.allow_zip_download || gallery.status !== 'submitted') {
+          const isDelivered = gallery.status === 'delivered';
+          const isSubmittedWithZip = gallery.status === 'submitted' && Boolean(gallery.allow_zip_download);
+
+          if (!isDelivered && !isSubmittedWithZip) {
             return new NextResponse('Pobieranie plików oryginalnych nie jest udostępnione', { status: 403 });
           }
 
-          // Originals strictly allowed ONLY for photos explicitly selected by client
-          const isSelected = db.prepare(`
-            SELECT s.id FROM selections s
-            JOIN photos p ON p.id = s.photo_id
-            WHERE s.gallery_id = ? AND p.original_path = ?
-          `).get(galleryId, relativePath);
+          if (!isDelivered) {
+            // Originals strictly allowed ONLY for photos explicitly selected by client
+            const isSelected = db.prepare(`
+              SELECT s.id FROM selections s
+              JOIN photos p ON p.id = s.photo_id
+              WHERE s.gallery_id = ? AND p.original_path = ?
+            `).get(galleryId, relativePath);
 
-          if (!isSelected) {
-            return new NextResponse('Zdjęcie nie zostało wybrane w pakiecie', { status: 403 });
+            if (!isSelected) {
+              return new NextResponse('Zdjęcie nie zostało wybrane w pakiecie', { status: 403 });
+            }
           }
         }
       }

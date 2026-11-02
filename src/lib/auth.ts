@@ -113,8 +113,13 @@ export async function verifyAdminSession(): Promise<boolean> {
 }
 
 export async function getAdminSessionId(): Promise<string | null> {
-  const cookieStore = await cookies();
-  const sessionToken = cookieStore.get(SESSION_COOKIE_NAME)?.value;
+  let sessionToken: string | undefined;
+  try {
+    const cookieStore = await cookies();
+    sessionToken = cookieStore.get(SESSION_COOKIE_NAME)?.value;
+  } catch {
+    return null;
+  }
   if (!sessionToken) return null;
 
   const verified = verifyToken(sessionToken);
@@ -138,8 +143,10 @@ export async function getAdminSessionId(): Promise<string | null> {
 }
 
 export async function destroyAdminSession() {
-  const cookieStore = await cookies();
-  cookieStore.delete(SESSION_COOKIE_NAME);
+  try {
+    const cookieStore = await cookies();
+    cookieStore.delete(SESSION_COOKIE_NAME);
+  } catch {}
 }
 
 // Client PIN verification token

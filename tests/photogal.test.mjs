@@ -890,6 +890,70 @@ describe('Photogal Core & Security Integration Test Suite', () => {
     assert.equal(archive.destroyed, true, 'Archive must be destroyed on aborted signal');
     assert.equal(passThrough.destroyed, true, 'PassThrough stream must be destroyed on aborted signal');
   });
+
+  test('Delivered gallery status allows downloading all photos without client selections', async () => {
+    const activeDb = db.default || db;
+    const galleryId = 'test-delivered-status-gal';
+    const slug = 'test-delivered-status-slug';
+    const pin = '5555';
+
+    // Insert delivered gallery
+    activeDb.prepare(`
+      INSERT OR REPLACE INTO galleries (id, slug, title, shoot_date, pin_code, pin_version, allow_zip_download, status)
+      VALUES (?, ?, ?, ?, ?, 1, 0, 'delivered')
+    `).run(galleryId, slug, 'Delivered Gallery Test', '2026-11-02', pin);
+
+    // Create a real sample image file in storage
+    const sampleBuffer = await (await import('sharp')).default({
+      create: { width: 80, height: 80, channels: 3, background: { r: 50, g: 150, b: 250 } },
+    }).jpeg().toBuffer();
+
+    const saved = await processAndSavePhoto(galleryId, 'sample_photo.jpg', sampleBuffer);
+    const photoId = 'test-delivered-photo-id';
+
+    activeDb.prepare(`
+      INSERT OR REPLACE INTO photos (id, gallery_id, filename, original_path, thumb_path, preview_path, width, height, aspect_ratio, file_size, order_index)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(photoId, galleryId, saved.filename, saved.originalRelativePath, saved.thumbRelativePath, saved.previewRelativePath, saved.width, saved.height, saved.aspectRatio, saved.fileSize, 0);
+
+    // Verify selections table is completely empty for this gallery
+    const selectionsRow = activeDb.prepare('SELECT COUNT(*) as count FROM selections WHERE gallery_id = ?').get(galleryId);
+    assert.equal(selectionsRow?.count || 0, 0, 'Selections table must have zero rows');
+
+    // Create client token
+    const clientToken = createClientToken(galleryId, 1);
+
+    // Test client ZIP endpoint with 'delivered' status
+    const { GET: getZip } = await import('../src/app/api/client/galleries/[slug]/zip/route.ts');
+    const zipReq = new NextRequest(`http://localhost:3000/api/client/galleries/${slug}/zip`, {
+      headers: {
+        'x-client-token': clientToken,
+      },
+    });
+
+    const zipRes = await getZip(zipReq, { params: Promise.resolve({ slug }) });
+    assert.equal(zipRes.status, 200, 'Delivered gallery must permit ZIP download without selections');
+    const contentDisposition = zipRes.headers.get('content-disposition');
+    assert.ok(contentDisposition && contentDisposition.includes('Wszystkie_'), 'ZIP header must use Wszystkie_ prefix');
+
+    // Test media stream endpoint for original photo with 'delivered' status
+    const { GET: getMedia } = await import('../src/app/api/media/[...path]/route.ts');
+    const mediaReq = new NextRequest(`http://localhost:3000/api/media/${saved.originalRelativePath}`, {
+      headers: {
+        'x-client-token': clientToken,
+      },
+    });
+
+    const pathArray = saved.originalRelativePath.split('/');
+    const mediaRes = await getMedia(mediaReq, { params: Promise.resolve({ path: pathArray }) });
+    assert.equal(mediaRes.status, 200, 'Delivered gallery must allow original photo download without selection');
+    await mediaRes.arrayBuffer();
+
+    // Clean up
+    deleteGalleryStorage(galleryId);
+    activeDb.prepare('DELETE FROM photos WHERE gallery_id = ?').run(galleryId);
+    activeDb.prepare('DELETE FROM galleries WHERE id = ?').run(galleryId);
+  });
 });
 
 

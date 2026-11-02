@@ -61,7 +61,7 @@ export async function GET(
     // Client is authorized -> return full gallery with photos & selections
     const photos = db.prepare(`
       SELECT 
-        p.id, p.filename, p.thumb_path, p.preview_path,
+        p.id, p.filename, p.thumb_path, p.preview_path, p.original_path,
         p.width, p.height, p.aspect_ratio, p.order_index,
         CASE WHEN s.id IS NOT NULL THEN 1 ELSE 0 END AS is_selected
       FROM photos p

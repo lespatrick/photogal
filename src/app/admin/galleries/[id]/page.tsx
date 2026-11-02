@@ -32,7 +32,7 @@ interface GalleryData {
   pin_code: string;
   max_selections: number;
   allow_zip_download: number;
-  status: 'draft' | 'active' | 'submitted' | 'archived';
+  status: 'draft' | 'active' | 'submitted' | 'archived' | 'delivered';
   cover_photo_id?: string;
   client_notes?: string;
   submitted_at?: string;
@@ -82,7 +82,7 @@ export default function GalleryManagementPage({
   const [editMax, setEditMax] = useState<number | ''>(0);
   const [editAllowZip, setEditAllowZip] = useState(false);
   const [editWelcome, setEditWelcome] = useState('');
-  const [editStatus, setEditStatus] = useState<'draft' | 'active' | 'submitted' | 'archived'>('active');
+  const [editStatus, setEditStatus] = useState<'draft' | 'active' | 'submitted' | 'archived' | 'delivered'>('active');
 
   // Delete photo confirmation
   const [photoToDelete, setPhotoToDelete] = useState<{ id: string; filename: string } | null>(null);
@@ -368,6 +368,12 @@ export default function GalleryManagementPage({
               </h1>
               {gallery.status === 'submitted' ? (
                 <span className="badge badge-submitted">Zakończona</span>
+              ) : gallery.status === 'delivered' ? (
+                <span className="badge badge-delivered">Dostarczona</span>
+              ) : gallery.status === 'archived' ? (
+                <span className="badge badge-archived">Zarchiwizowana</span>
+              ) : gallery.status === 'draft' ? (
+                <span className="badge badge-draft">Szkic</span>
               ) : (
                 <span className="badge badge-active">W trakcie</span>
               )}
@@ -786,6 +792,7 @@ export default function GalleryManagementPage({
                   onChange={(e) => setEditStatus(e.target.value as any)}
                 >
                   <option value="active">Aktywna (klient może wybierać zdjęcia)</option>
+                  <option value="delivered">Dostarczona (pobieranie wszystkich zdjęć bez selekcji)</option>
                   <option value="submitted">Przesłana (selekcja zatwierdzona przez klienta)</option>
                   <option value="archived">Zarchiwizowana (ukryta przed klientem)</option>
                   <option value="draft">Szkic (niewidoczna)</option>

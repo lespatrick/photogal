@@ -12,6 +12,7 @@ interface PhotoItem {
   filename: string;
   thumb_path: string;
   preview_path: string;
+  original_path?: string;
   aspect_ratio: number;
   width: number;
   height: number;
@@ -26,7 +27,7 @@ interface GalleryPublicData {
   welcome_text?: string;
   max_selections: number;
   allow_zip_download: number;
-  status: 'draft' | 'active' | 'submitted' | 'archived';
+  status: 'draft' | 'active' | 'submitted' | 'archived' | 'delivered';
   cover_thumb?: string;
   submitted_at?: string;
 }
@@ -418,6 +419,7 @@ export default function ClientGalleryPage({
   const selectedCount = selectedIds.size;
   const maxLimit = gallery?.max_selections || 0;
   const isSubmitted = gallery?.status === 'submitted';
+  const isDelivered = gallery?.status === 'delivered';
 
   const currentLightboxPhoto = lightboxIndex !== null && lightboxIndex < currentDisplayPhotos.length
     ? currentDisplayPhotos[lightboxIndex]
@@ -488,6 +490,26 @@ export default function ClientGalleryPage({
           </div>
         )}
 
+        {isDelivered && (
+          <div
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              border: '1px solid var(--border-subtle)',
+              borderRadius: 'var(--radius-full)',
+              padding: '0.35rem 1rem',
+              fontSize: '0.78rem',
+              color: 'var(--text-secondary)',
+              letterSpacing: '0.04em',
+              marginBottom: '1.5rem',
+            }}
+          >
+            <Check size={13} />
+            <span>Galeria gotowa • Pobieranie zdjęć odblokowane</span>
+          </div>
+        )}
+
         {/* Clean Filter Tabs */}
         <div style={{ display: 'flex', justifyContent: 'center', gap: '0.5rem', marginTop: '1.5rem' }}>
           <button
@@ -554,73 +576,110 @@ export default function ClientGalleryPage({
       {/* Discreet Sticky Bottom Dock */}
       <div className="selection-dock-container">
         <div className="selection-dock">
-          <div className="selection-dock-info">
-            <span
-              style={{
-                color: selectedCount > 0 ? 'var(--accent-heart)' : 'var(--text-muted)',
-                display: 'flex',
-                alignItems: 'center',
-              }}
-            >
-              <Heart size={15} fill={selectedCount > 0 ? 'currentColor' : 'none'} strokeWidth={2} />
-            </span>
-
-            <div className="selection-count-pill">
-              Wybrano {selectedCount} {maxLimit > 0 ? `z ${maxLimit}` : ''}
-            </div>
-
-            {maxLimit > 0 && (
-              <div className="selection-progress-bar">
-                <div
-                  className="selection-progress-fill"
-                  style={{
-                    width: `${Math.min(100, (selectedCount / maxLimit) * 100)}%`,
-                  }}
-                />
+          {isDelivered ? (
+            <>
+              <div className="selection-dock-info">
+                <span className="mono-meta" style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                  {photos.length} {photos.length === 1 ? 'zdjęcie' : (photos.length > 1 && photos.length < 5 ? 'zdjęcia' : 'zdjęć')}
+                </span>
+                {selectedCount > 0 && (
+                  <div className="selection-count-pill" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                    <Heart size={12} fill="currentColor" color="var(--accent-heart)" />
+                    Ulubione: {selectedCount}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            {gallery?.allow_zip_download === 1 && isSubmitted && (
-              <a
-                href={`/api/client/galleries/${slug}/zip${getClientToken() ? `?token=${encodeURIComponent(getClientToken()!)}` : ''}`}
-                download
-                className="btn btn-secondary"
-                style={{ fontSize: '0.8rem', padding: '0.45rem 0.85rem' }}
-              >
-                <Download size={13} />
-                Pobierz ZIP
-              </a>
-            )}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <a
+                  href={`/api/client/galleries/${slug}/zip${getClientToken() ? `?token=${encodeURIComponent(getClientToken()!)}` : ''}`}
+                  download
+                  className="btn btn-primary"
+                  style={{
+                    fontSize: '0.82rem',
+                    padding: '0.45rem 1.15rem',
+                    borderRadius: 'var(--radius-full)',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.45rem',
+                  }}
+                >
+                  <Download size={14} />
+                  Pobierz wszystkie zdjęcia (ZIP)
+                </a>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="selection-dock-info">
+                <span
+                  style={{
+                    color: selectedCount > 0 ? 'var(--accent-heart)' : 'var(--text-muted)',
+                    display: 'flex',
+                    alignItems: 'center',
+                  }}
+                >
+                  <Heart size={15} fill={selectedCount > 0 ? 'currentColor' : 'none'} strokeWidth={2} />
+                </span>
 
-            {!isSubmitted ? (
-              <button
-                onClick={() => setFinalizeOpen(true)}
-                disabled={selectedCount === 0}
-                className="btn btn-primary"
-                style={{
-                  fontSize: '0.82rem',
-                  padding: '0.45rem 1rem',
-                  borderRadius: 'var(--radius-full)',
-                }}
-              >
-                Wyślij wybór
-              </button>
-            ) : (
-              <span
-                style={{
-                  fontSize: '0.78rem',
-                  letterSpacing: '0.04em',
-                  color: 'var(--text-muted)',
-                  textTransform: 'uppercase',
-                  fontWeight: 500,
-                }}
-              >
-                Wysłano
-              </span>
-            )}
-          </div>
+                <div className="selection-count-pill">
+                  Wybrano {selectedCount} {maxLimit > 0 ? `z ${maxLimit}` : ''}
+                </div>
+
+                {maxLimit > 0 && (
+                  <div className="selection-progress-bar">
+                    <div
+                      className="selection-progress-fill"
+                      style={{
+                        width: `${Math.min(100, (selectedCount / maxLimit) * 100)}%`,
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                {gallery?.allow_zip_download === 1 && isSubmitted && (
+                  <a
+                    href={`/api/client/galleries/${slug}/zip${getClientToken() ? `?token=${encodeURIComponent(getClientToken()!)}` : ''}`}
+                    download
+                    className="btn btn-secondary"
+                    style={{ fontSize: '0.8rem', padding: '0.45rem 0.85rem' }}
+                  >
+                    <Download size={13} />
+                    Pobierz ZIP
+                  </a>
+                )}
+
+                {!isSubmitted ? (
+                  <button
+                    onClick={() => setFinalizeOpen(true)}
+                    disabled={selectedCount === 0}
+                    className="btn btn-primary"
+                    style={{
+                      fontSize: '0.82rem',
+                      padding: '0.45rem 1rem',
+                      borderRadius: 'var(--radius-full)',
+                    }}
+                  >
+                    Wyślij wybór
+                  </button>
+                ) : (
+                  <span
+                    style={{
+                      fontSize: '0.78rem',
+                      letterSpacing: '0.04em',
+                      color: 'var(--text-muted)',
+                      textTransform: 'uppercase',
+                      fontWeight: 500,
+                    }}
+                  >
+                    Wysłano
+                  </span>
+                )}
+              </div>
+            </>
+          )}
         </div>
       </div>
 
@@ -638,11 +697,24 @@ export default function ClientGalleryPage({
               {String(lightboxIndex + 1).padStart(2, '0')} / {String(currentDisplayPhotos.length).padStart(2, '0')} • {currentLightboxPhoto.filename}
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              {(isDelivered || (isSubmitted && gallery?.allow_zip_download === 1 && selectedIds.has(currentLightboxPhoto.id))) && (
+                <a
+                  href={`/api/media/${currentLightboxPhoto.original_path || currentLightboxPhoto.preview_path.replace('/preview/', '/original/')}${getClientToken() ? `?token=${encodeURIComponent(getClientToken()!)}` : ''}`}
+                  download={currentLightboxPhoto.filename}
+                  className="btn btn-ghost btn-icon"
+                  style={{ color: '#ffffff', opacity: 0.85 }}
+                  title="Pobierz zdjęcie"
+                >
+                  <Download size={18} />
+                </a>
+              )}
+
               <button
                 onClick={() => handleToggleSelection(currentLightboxPhoto.id)}
                 className={`heart-button ${selectedIds.has(currentLightboxPhoto.id) ? 'selected' : ''}`}
                 style={{ width: '36px', height: '36px' }}
+                title={selectedIds.has(currentLightboxPhoto.id) ? 'Usuń z ulubionych' : 'Dodaj do ulubionych'}
               >
                 <Heart size={16} fill={selectedIds.has(currentLightboxPhoto.id) ? '#ffffff' : 'none'} strokeWidth={2} />
               </button>
