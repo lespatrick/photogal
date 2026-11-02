@@ -19,9 +19,9 @@ fi
 echo -e "${BLUE}==>${NC} Updating photogal from GitHub..."
 
 # 1. Stop systemd service first so it does not loop during build
-if command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet photogal.service 2>/dev/null; then
+if command -v systemctl >/dev/null 2>&1; then
     echo -e "${BLUE}==>${NC} Stopping photogal service..."
-    systemctl stop photogal.service || true
+    systemctl stop photogal.service 2>/dev/null || true
 fi
 
 cd "$INSTALL_DIR"
@@ -30,15 +30,22 @@ cd "$INSTALL_DIR"
 git fetch origin main
 git reset --hard origin/main
 
-# 3. Install dependencies
-echo -e "${BLUE}==>${NC} Installing dependencies..."
-npm install --omit=dev=false
+# 3. Update systemd service definition and launcher immediately
+if [ -f "$INSTALL_DIR/deploy/lxc/photogal.service" ] && [ -d /etc/systemd/system ]; then
+    cp "$INSTALL_DIR/deploy/lxc/photogal.service" /etc/systemd/system/photogal.service
+    chmod +x "$INSTALL_DIR/deploy/lxc/start.sh"
+    systemctl daemon-reload
+fi
 
-# 4. Build Next.js application
+# 4. Install dependencies
+echo -e "${BLUE}==>${NC} Installing dependencies..."
+npm install
+
+# 5. Build Next.js application
 echo -e "${BLUE}==>${NC} Building production bundle..."
 NODE_OPTIONS="--max-old-space-size=2048" npm run build
 
-# 5. Synchronize standalone assets
+# 6. Synchronize standalone assets
 if [ -d "$INSTALL_DIR/.next/standalone" ]; then
     # Flatten if nested
     if [ ! -f "$INSTALL_DIR/.next/standalone/server.js" ]; then
@@ -58,13 +65,6 @@ if [ -d "$INSTALL_DIR/.next/standalone" ]; then
     mkdir -p "$INSTALL_DIR/data" "$INSTALL_DIR/storage"
     ln -sfn "$INSTALL_DIR/data" "$INSTALL_DIR/.next/standalone/data"
     ln -sfn "$INSTALL_DIR/storage" "$INSTALL_DIR/.next/standalone/storage"
-fi
-
-# 6. Update systemd service definition and launcher
-if [ -f "$INSTALL_DIR/deploy/lxc/photogal.service" ] && [ -d /etc/systemd/system ]; then
-    cp "$INSTALL_DIR/deploy/lxc/photogal.service" /etc/systemd/system/photogal.service
-    chmod +x "$INSTALL_DIR/deploy/lxc/start.sh"
-    systemctl daemon-reload
 fi
 
 # 7. Fix directory permissions
