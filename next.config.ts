@@ -7,6 +7,8 @@ const nextConfig: NextConfig = {
     proxyClientMaxBodySize: "10gb",
     // @ts-ignore
     agentUpgrade: false,
+    cpus: 1,
+    workerThreads: false,
   },
   async headers() {
     return [
