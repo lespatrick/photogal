@@ -138,6 +138,7 @@ chown -R photogal:photogal "$INSTALL_DIR"
 # 9. Setup systemd service (if systemd is running)
 if pidof systemd >/dev/null 2>&1 || [ -d /run/systemd/system ]; then
     echo -e "${BLUE}==>${NC} Installing systemd service..."
+    chmod +x "$INSTALL_DIR/deploy/lxc/start.sh"
     cp "$INSTALL_DIR/deploy/lxc/photogal.service" /etc/systemd/system/photogal.service
     systemctl daemon-reload
     systemctl enable photogal.service

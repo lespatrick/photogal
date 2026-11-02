@@ -17,31 +17,42 @@ if [ ! -d "$INSTALL_DIR" ]; then
 fi
 
 echo -e "${BLUE}==>${NC} Updating photogal from GitHub..."
-cd "$INSTALL_DIR"
 
-# 1. Pull latest git commits
-git pull origin main
-
-# 2. Reinstall dependencies & build standalone app
-echo -e "${BLUE}==>${NC} Installing dependencies and building..."
-npm ci
-NODE_OPTIONS="--max-old-space-size=2048" npm run build
-
-# Check if server.js is in a nested directory inside standalone (can happen in certain Next.js environments)
-if [ ! -f "$INSTALL_DIR/.next/standalone/server.js" ] && [ -d "$INSTALL_DIR/.next/standalone" ]; then
-    NESTED_SERVER=$(find "$INSTALL_DIR/.next/standalone" -maxdepth 4 -name "server.js" | head -n 1 || true)
-    if [ -n "$NESTED_SERVER" ]; then
-        NESTED_DIR=$(dirname "$NESTED_SERVER")
-        echo -e "${BLUE}==>${NC} Flattening standalone folder from $NESTED_DIR..."
-        cp -a "$NESTED_DIR/." "$INSTALL_DIR/.next/standalone/"
-    fi
+# 1. Stop systemd service first so it does not loop during build
+if command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet photogal.service 2>/dev/null; then
+    echo -e "${BLUE}==>${NC} Stopping photogal service..."
+    systemctl stop photogal.service || true
 fi
 
-# 3. Synchronize standalone assets
+cd "$INSTALL_DIR"
+
+# 2. Pull latest git commits cleanly
+git fetch origin main
+git reset --hard origin/main
+
+# 3. Install dependencies
+echo -e "${BLUE}==>${NC} Installing dependencies..."
+npm install --omit=dev=false
+
+# 4. Build Next.js application
+echo -e "${BLUE}==>${NC} Building production bundle..."
+NODE_OPTIONS="--max-old-space-size=2048" npm run build
+
+# 5. Synchronize standalone assets
 if [ -d "$INSTALL_DIR/.next/standalone" ]; then
-    cp -r "$INSTALL_DIR/public" "$INSTALL_DIR/.next/standalone/"
+    # Flatten if nested
+    if [ ! -f "$INSTALL_DIR/.next/standalone/server.js" ]; then
+        NESTED_SERVER=$(find "$INSTALL_DIR/.next/standalone" -maxdepth 4 -name "server.js" 2>/dev/null | head -n 1 || true)
+        if [ -n "$NESTED_SERVER" ]; then
+            NESTED_DIR=$(dirname "$NESTED_SERVER")
+            echo -e "${BLUE}==>${NC} Flattening standalone folder from $NESTED_DIR..."
+            cp -a "$NESTED_DIR/." "$INSTALL_DIR/.next/standalone/"
+        fi
+    fi
+
+    cp -r "$INSTALL_DIR/public" "$INSTALL_DIR/.next/standalone/" 2>/dev/null || true
     mkdir -p "$INSTALL_DIR/.next/standalone/.next"
-    cp -r "$INSTALL_DIR/.next/static" "$INSTALL_DIR/.next/standalone/.next/"
+    cp -r "$INSTALL_DIR/.next/static" "$INSTALL_DIR/.next/standalone/.next/" 2>/dev/null || true
     cp -r "$INSTALL_DIR/scripts" "$INSTALL_DIR/.next/standalone/" 2>/dev/null || true
     
     mkdir -p "$INSTALL_DIR/data" "$INSTALL_DIR/storage"
@@ -49,16 +60,24 @@ if [ -d "$INSTALL_DIR/.next/standalone" ]; then
     ln -sfn "$INSTALL_DIR/storage" "$INSTALL_DIR/.next/standalone/storage"
 fi
 
-# 4. Fix permissions
-chown -R photogal:photogal "$INSTALL_DIR"
-
-# 5. Restart systemd service
-if command -v systemctl >/dev/null 2>&1 && systemctl list-unit-files photogal.service >/dev/null 2>&1; then
-    echo -e "${BLUE}==>${NC} Restarting photogal service..."
-    systemctl restart photogal.service
-    echo -e "${GREEN}✓${NC} photogal updated and restarted successfully!"
-    systemctl status photogal.service --no-pager -n 5
-else
-    echo -e "${GREEN}✓${NC} Build finished. Please restart your photogal container/process."
+# 6. Update systemd service definition and launcher
+if [ -f "$INSTALL_DIR/deploy/lxc/photogal.service" ] && [ -d /etc/systemd/system ]; then
+    cp "$INSTALL_DIR/deploy/lxc/photogal.service" /etc/systemd/system/photogal.service
+    chmod +x "$INSTALL_DIR/deploy/lxc/start.sh"
+    systemctl daemon-reload
 fi
 
+# 7. Fix directory permissions
+mkdir -p "$INSTALL_DIR/data" "$INSTALL_DIR/storage"
+chown -R photogal:photogal "$INSTALL_DIR"
+chmod -R 775 "$INSTALL_DIR/data" "$INSTALL_DIR/storage"
+
+# 8. Start service
+if command -v systemctl >/dev/null 2>&1; then
+    echo -e "${BLUE}==>${NC} Starting photogal service..."
+    systemctl restart photogal.service
+    sleep 2
+    systemctl status photogal.service --no-pager
+fi
+
+echo -e "\n${GREEN}✓ photogal updated and running!${NC}"

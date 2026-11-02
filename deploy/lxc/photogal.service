@@ -6,26 +6,19 @@ After=network.target
 Type=simple
 User=photogal
 Group=photogal
-WorkingDirectory=/opt/photogal/.next/standalone
+WorkingDirectory=/opt/photogal
 EnvironmentFile=-/opt/photogal/.env
 Environment=NODE_ENV=production
 Environment=PORT=3000
 Environment=HOSTNAME=0.0.0.0
 Environment=NEXT_TELEMETRY_DISABLED=1
 
-ExecStart=/usr/bin/node server.js
+ExecStart=/opt/photogal/deploy/lxc/start.sh
 Restart=always
 RestartSec=5
 KillSignal=SIGINT
 
-# Security sandbox
-NoNewPrivileges=true
-PrivateTmp=true
-ProtectSystem=full
-ProtectHome=true
-ReadWritePaths=-/opt/photogal/data -/opt/photogal/storage -/opt/photogal/.next/standalone -/mnt -/media
-
-# Resource limits
+# Security sandbox & limits
 LimitNOFILE=65535
 
 [Install]
