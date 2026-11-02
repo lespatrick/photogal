@@ -954,6 +954,84 @@ describe('Photogal Core & Security Integration Test Suite', () => {
     activeDb.prepare('DELETE FROM photos WHERE gallery_id = ?').run(galleryId);
     activeDb.prepare('DELETE FROM galleries WHERE id = ?').run(galleryId);
   });
+
+  test('DELETE /api/admin/galleries/[id]/photos removes all gallery photos, selections and storage', async () => {
+    const activeDb = db.default || db;
+    const galleryId = 'test-delete-all-gal';
+    const slug = 'test-delete-all-slug';
+
+    activeDb.prepare(`
+      INSERT OR REPLACE INTO galleries (id, slug, title, shoot_date, pin_code, status)
+      VALUES (?, ?, ?, ?, ?, 'active')
+    `).run(galleryId, slug, 'Delete All Test Gallery', '2026-11-02', '1234');
+
+    // Create 2 test photos in storage and DB
+    const sampleBuffer = await (await import('sharp')).default({
+      create: { width: 40, height: 40, channels: 3, background: { r: 10, g: 20, b: 30 } },
+    }).jpeg().toBuffer();
+
+    const p1 = await processAndSavePhoto(galleryId, 'photo_one.jpg', sampleBuffer);
+    const p2 = await processAndSavePhoto(galleryId, 'photo_two.jpg', sampleBuffer);
+
+    activeDb.prepare(`
+      INSERT INTO photos (id, gallery_id, filename, original_path, thumb_path, preview_path, width, height, aspect_ratio, file_size, order_index)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+    `).run('p1', galleryId, p1.filename, p1.originalRelativePath, p1.thumbRelativePath, p1.previewRelativePath, p1.width, p1.height, p1.aspectRatio, p1.fileSize);
+
+    activeDb.prepare(`
+      INSERT INTO photos (id, gallery_id, filename, original_path, thumb_path, preview_path, width, height, aspect_ratio, file_size, order_index)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+    `).run('p2', galleryId, p2.filename, p2.originalRelativePath, p2.thumbRelativePath, p2.previewRelativePath, p2.width, p2.height, p2.aspectRatio, p2.fileSize);
+
+    // Set p1 as cover
+    activeDb.prepare('UPDATE galleries SET cover_photo_id = ? WHERE id = ?').run('p1', galleryId);
+
+    // Create a selection
+    activeDb.prepare('INSERT INTO selections (id, gallery_id, photo_id) VALUES (?, ?, ?)').run('s1', galleryId, 'p1');
+
+    const { DELETE: deleteAllPhotos } = await import('../src/app/api/admin/galleries/[id]/photos/route.ts');
+
+    // 1. Unauthorized request without admin session
+    const unauthReq = new NextRequest(`http://localhost:3000/api/admin/galleries/${galleryId}/photos`, {
+      method: 'DELETE',
+    });
+    const unauthRes = await deleteAllPhotos(unauthReq, { params: Promise.resolve({ id: galleryId }) });
+    assert.equal(unauthRes.status, 401, 'Unauthorized request must be rejected with 401');
+
+    // 2. Mock admin session by creating an admin in DB and setting cookie
+    const adminId = 'test-delete-all-admin';
+    activeDb.prepare('INSERT OR REPLACE INTO admins (id, username, password_hash) VALUES (?, ?, ?)').run(adminId, 'delalladmin', 'hash');
+    const sessionToken = signToken(JSON.stringify({ adminId, tokenVersion: 1, exp: Date.now() + 60000 }));
+
+    const authReq = new NextRequest(`http://localhost:3000/api/admin/galleries/${galleryId}/photos`, {
+      method: 'DELETE',
+      headers: {
+        cookie: `photogal_admin_session=${sessionToken}`,
+      },
+    });
+
+    const authRes = await deleteAllPhotos(authReq, { params: Promise.resolve({ id: galleryId }) });
+    assert.equal(authRes.status, 200, 'Authorized request must return 200');
+
+    // Verify DB state
+    const photosCount = activeDb.prepare('SELECT COUNT(*) as count FROM photos WHERE gallery_id = ?').get(galleryId)?.count;
+    assert.equal(photosCount, 0, 'All photos must be removed from DB');
+
+    const selectionsCount = activeDb.prepare('SELECT COUNT(*) as count FROM selections WHERE gallery_id = ?').get(galleryId)?.count;
+    assert.equal(selectionsCount, 0, 'All selections must be cleared');
+
+    const galRow = activeDb.prepare('SELECT cover_photo_id FROM galleries WHERE id = ?').get(galleryId);
+    assert.equal(galRow.cover_photo_id, null, 'cover_photo_id must be reset to NULL');
+
+    // Verify physical storage files are purged
+    const fullP1 = resolveSafeStoragePath(p1.originalRelativePath);
+    assert.equal(fs.existsSync(fullP1), false, 'Original file must be removed from storage');
+
+    // Clean up
+    deleteGalleryStorage(galleryId);
+    activeDb.prepare('DELETE FROM galleries WHERE id = ?').run(galleryId);
+    activeDb.prepare('DELETE FROM admins WHERE id = ?').run(adminId);
+  });
 });
 
 

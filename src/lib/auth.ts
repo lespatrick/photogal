@@ -107,18 +107,31 @@ export async function createAdminSession(adminId: string) {
   return token;
 }
 
-export async function verifyAdminSession(): Promise<boolean> {
-  const id = await getAdminSessionId();
+export async function verifyAdminSession(req?: Request | NextRequest): Promise<boolean> {
+  const id = await getAdminSessionId(req);
   return !!id;
 }
 
-export async function getAdminSessionId(): Promise<string | null> {
+export async function getAdminSessionId(req?: Request | NextRequest): Promise<string | null> {
   let sessionToken: string | undefined;
-  try {
-    const cookieStore = await cookies();
-    sessionToken = cookieStore.get(SESSION_COOKIE_NAME)?.value;
-  } catch {
-    return null;
+
+  if (req && 'cookies' in req && typeof (req as any).cookies?.get === 'function') {
+    sessionToken = (req as any).cookies.get(SESSION_COOKIE_NAME)?.value;
+  }
+  if (!sessionToken && req?.headers) {
+    const cookieHeader = req.headers.get('cookie');
+    if (cookieHeader) {
+      const match = cookieHeader.match(new RegExp(`(?:^|;\\s*)${SESSION_COOKIE_NAME}=([^;]+)`));
+      if (match) sessionToken = decodeURIComponent(match[1]);
+    }
+  }
+  if (!sessionToken) {
+    try {
+      const cookieStore = await cookies();
+      sessionToken = cookieStore.get(SESSION_COOKIE_NAME)?.value;
+    } catch {
+      return null;
+    }
   }
   if (!sessionToken) return null;
 

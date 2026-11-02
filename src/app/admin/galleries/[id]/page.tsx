@@ -88,6 +88,10 @@ export default function GalleryManagementPage({
   const [photoToDelete, setPhotoToDelete] = useState<{ id: string; filename: string } | null>(null);
   const [deletingPhoto, setDeletingPhoto] = useState(false);
 
+  // Delete all photos confirmation
+  const [deleteAllModalOpen, setDeleteAllModalOpen] = useState(false);
+  const [deletingAll, setDeletingAll] = useState(false);
+
   const [securityInfo, setSecurityInfo] = useState<{
     failedAttempts24h: number;
     isLocked: boolean;
@@ -224,6 +228,25 @@ export default function GalleryManagementPage({
       toast(err.message || 'Błąd usuwania zdjęcia', 'error');
     } finally {
       setDeletingPhoto(false);
+    }
+  };
+
+  const handleConfirmDeleteAllPhotos = async () => {
+    setDeletingAll(true);
+    try {
+      const res = await fetch(`/api/admin/galleries/${galleryId}/photos`, {
+        method: 'DELETE',
+      });
+      const data = await parseJsonResponse(res);
+      if (!res.ok) throw new Error(data.error || 'Błąd usuwania');
+      toast('Wszystkie zdjęcia zostały usunięte', 'info');
+      setPhotos([]);
+      setGallery((prev) => (prev ? { ...prev, cover_photo_id: undefined } : prev));
+      setDeleteAllModalOpen(false);
+    } catch (err: any) {
+      toast(err.message || 'Błąd usuwania wszystkich zdjęć', 'error');
+    } finally {
+      setDeletingAll(false);
     }
   };
 
@@ -534,9 +557,23 @@ export default function GalleryManagementPage({
             </button>
           </div>
 
-          <span className="mono-meta">
-            {displayPhotos.length} zdjęć
-          </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            {photos.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setDeleteAllModalOpen(true)}
+                className="btn btn-danger"
+                style={{ fontSize: '0.78rem', padding: '0.3rem 0.75rem', gap: '0.35rem' }}
+                title="Usuń wszystkie zdjęcia z tej galerii"
+              >
+                <Trash2 size={13} />
+                <span>Usuń wszystkie</span>
+              </button>
+            )}
+            <span className="mono-meta">
+              {displayPhotos.length} zdjęć
+            </span>
+          </div>
         </div>
 
         {/* Photos Grid */}
@@ -841,6 +878,25 @@ export default function GalleryManagementPage({
                   Zapisz
                 </button>
               </div>
+
+              {photos.length > 0 && (
+                <div style={{ marginTop: '1.75rem', paddingTop: '1.25rem', borderTop: '1px solid var(--border-hairline)' }}>
+                  <label className="form-label" style={{ color: '#ef4444', marginBottom: '0.5rem' }}>
+                    Strefa niebezpieczna
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSettingsOpen(false);
+                      setDeleteAllModalOpen(true);
+                    }}
+                    className="btn btn-danger"
+                    style={{ width: '100%', fontSize: '0.8rem', justifyContent: 'center' }}
+                  >
+                    <Trash2 size={13} /> Usuń wszystkie zdjęcia ({photos.length})
+                  </button>
+                </div>
+              )}
             </form>
           </div>
         </div>
@@ -887,6 +943,53 @@ export default function GalleryManagementPage({
               >
                 <Trash2 size={14} />
                 <span>{deletingPhoto ? 'Usuwanie...' : 'Usuń zdjęcie'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete All Photos Confirmation Modal */}
+      {deleteAllModalOpen && (
+        <div className="modal-overlay" onClick={() => !deletingAll && setDeleteAllModalOpen(false)}>
+          <div className="modal-card" style={{ maxWidth: '440px' }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
+              <h2 className="serif-title" style={{ fontSize: '1.35rem', color: '#ef4444' }}>
+                Usuń wszystkie zdjęcia
+              </h2>
+              <button
+                type="button"
+                onClick={() => !deletingAll && setDeleteAllModalOpen(false)}
+                style={{ color: 'var(--text-muted)' }}
+                disabled={deletingAll}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', lineHeight: 1.6, marginBottom: '1.5rem' }}>
+              Czy na pewno chcesz usunąć <strong>wszystkie zdjęcia ({photos.length})</strong> z tej galerii?
+              Wszystkie pliki oryginalne, podglądy oraz miniatury zostaną trwale wykasowane z serwera. Tej operacji nie można cofnąć.
+            </p>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.65rem' }}>
+              <button
+                type="button"
+                onClick={() => setDeleteAllModalOpen(false)}
+                className="btn btn-secondary"
+                disabled={deletingAll}
+              >
+                Anuluj
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDeleteAllPhotos}
+                className="btn btn-danger-solid"
+                disabled={deletingAll}
+                style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+              >
+                <Trash2 size={14} />
+                <span>{deletingAll ? 'Usuwanie...' : 'Usuń wszystkie'}</span>
               </button>
             </div>
           </div>

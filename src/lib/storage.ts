@@ -77,6 +77,16 @@ export function deleteGalleryStorage(galleryId: string) {
   }
 }
 
+export function clearGalleryStorage(galleryId: string) {
+  const base = getSafeGalleryBase(galleryId);
+  if (!base) return;
+  const galleriesRoot = path.resolve(STORAGE_DIR, 'galleries');
+  if (base.startsWith(galleriesRoot + path.sep) && base !== galleriesRoot && fs.existsSync(/*turbopackIgnore: true*/ base)) {
+    fs.rmSync(base, { recursive: true, force: true });
+  }
+  ensureGalleryStorage(galleryId);
+}
+
 export function deletePhotoFiles(galleryId: string, originalPath: string, thumbPath: string, previewPath: string) {
   const galleryBase = getSafeGalleryBase(galleryId);
   if (!galleryBase) return;
