@@ -17,8 +17,8 @@ function slugify(text: string): string {
     .replace(/^-+|-+$/g, '') || 'galeria-' + Math.random().toString(36).substring(2, 6);
 }
 
-export async function GET() {
-  if (!(await verifyAdminSession())) {
+export async function GET(req: NextRequest) {
+  if (!(await verifyAdminSession(req))) {
     return NextResponse.json({ error: 'Brak autoryzacji' }, { status: 401 });
   }
 
@@ -42,7 +42,7 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  if (!(await verifyAdminSession())) {
+  if (!(await verifyAdminSession(req))) {
     return NextResponse.json({ error: 'Brak autoryzacji' }, { status: 401 });
   }
 

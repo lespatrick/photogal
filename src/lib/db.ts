@@ -132,11 +132,22 @@ export function initDatabase() {
       attempted_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 
+    CREATE TABLE IF NOT EXISTS api_tokens (
+      id TEXT PRIMARY KEY,
+      admin_id TEXT NOT NULL,
+      token_hash TEXT UNIQUE NOT NULL,
+      label TEXT NOT NULL,
+      last_used_at DATETIME,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (admin_id) REFERENCES admins(id) ON DELETE CASCADE
+    );
+
     CREATE INDEX IF NOT EXISTS idx_galleries_slug ON galleries(slug);
     CREATE INDEX IF NOT EXISTS idx_photos_gallery ON photos(gallery_id);
     CREATE INDEX IF NOT EXISTS idx_selections_gallery ON selections(gallery_id);
     CREATE INDEX IF NOT EXISTS idx_selections_photo ON selections(photo_id);
     CREATE INDEX IF NOT EXISTS idx_authenticators_admin ON authenticators(admin_id);
+    CREATE INDEX IF NOT EXISTS idx_api_tokens_hash ON api_tokens(token_hash);
     CREATE INDEX IF NOT EXISTS idx_pin_attempts_lookup ON pin_attempts(gallery_id, ip_hash, attempted_at);
     CREATE INDEX IF NOT EXISTS idx_pin_attempts_attempted_at ON pin_attempts(attempted_at);
     CREATE INDEX IF NOT EXISTS idx_auth_challenges_lookup ON auth_challenges(challenge, user_type);

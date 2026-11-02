@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 import util from 'util';
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import db from './db';
 
 import type { NextRequest } from 'next/server';
@@ -113,6 +113,54 @@ export async function verifyAdminSession(req?: Request | NextRequest): Promise<b
 }
 
 export async function getAdminSessionId(req?: Request | NextRequest): Promise<string | null> {
+  // 1. Check for Authorization Bearer token or X-API-Key header
+  let authHeader: string | null = null;
+  let apiKeyHeader: string | null = null;
+
+  if (req?.headers) {
+    authHeader = req.headers.get('authorization');
+    apiKeyHeader = req.headers.get('x-api-key');
+  } else {
+    try {
+      const headerList = await headers();
+      authHeader = headerList.get('authorization');
+      apiKeyHeader = headerList.get('x-api-key');
+    } catch {}
+  }
+
+  const tokenCandidate = apiKeyHeader || (authHeader?.startsWith('Bearer ') ? authHeader.slice(7).trim() : null);
+
+  if (tokenCandidate) {
+    // If it's a personal access token (starts with pg_live_)
+    if (tokenCandidate.startsWith('pg_live_')) {
+      try {
+        const tokenHash = crypto.createHash('sha256').update(tokenCandidate).digest('hex');
+        const tokenRow = db.prepare('SELECT id, admin_id FROM api_tokens WHERE token_hash = ?').get(tokenHash) as { id: string; admin_id: string } | undefined;
+        if (tokenRow) {
+          db.prepare("UPDATE api_tokens SET last_used_at = CURRENT_TIMESTAMP WHERE id = ?").run(tokenRow.id);
+          return tokenRow.admin_id;
+        }
+      } catch (err) {
+        console.error('API token verification error:', err);
+      }
+    } else {
+      // Check if it's a signed JWT/HMAC token
+      const verified = verifyToken(tokenCandidate);
+      if (verified) {
+        try {
+          const data = JSON.parse(verified);
+          if (data.adminId && data.exp > Date.now()) {
+            const admin = db.prepare('SELECT id, token_version FROM admins WHERE id = ?').get(data.adminId) as { id: string; token_version?: number } | undefined;
+            if (admin && (data.tokenVersion ?? 1) === (admin.token_version ?? 1)) {
+              return admin.id;
+            }
+          }
+        } catch {}
+      }
+    }
+  }
+
+  // 2. Check for cookie-based session
   let sessionToken: string | undefined;
 
   if (req && 'cookies' in req && typeof (req as any).cookies?.get === 'function') {
@@ -153,6 +201,16 @@ export async function getAdminSessionId(req?: Request | NextRequest): Promise<st
   } catch {
     return null;
   }
+}
+
+export function generateApiToken(): { rawToken: string; tokenHash: string } {
+  const rawToken = `pg_live_${crypto.randomBytes(24).toString('hex')}`;
+  const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+  return { rawToken, tokenHash };
+}
+
+export function hashApiToken(token: string): string {
+  return crypto.createHash('sha256').update(token).digest('hex');
 }
 
 export async function destroyAdminSession() {

@@ -5,7 +5,8 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   Plus, LogOut, ExternalLink, Copy, Check,
-  Heart, Trash2, X, Fingerprint, ShieldCheck, Lock
+  Heart, Trash2, X, Fingerprint, ShieldCheck, Lock,
+  Key, Download, Sliders
 } from 'lucide-react';
 import { startRegistration } from '@simplewebauthn/browser';
 import { ThemeToggle } from '@/components/ThemeProvider';
@@ -65,9 +66,9 @@ export default function AdminDashboardPage() {
   const [formZip, setFormZip] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  // Security Modal (Password & Passkey)
+  // Security Modal (Password, Passkey, Integrations)
   const [securityModalOpen, setSecurityModalOpen] = useState(false);
-  const [securityTab, setSecurityTab] = useState<'password' | 'passkeys'>('password');
+  const [securityTab, setSecurityTab] = useState<'password' | 'passkeys' | 'integrations'>('password');
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -77,6 +78,14 @@ export default function AdminDashboardPage() {
   const [passkeys, setPasskeys] = useState<any[]>([]);
   const [passkeyName, setPasskeyName] = useState('Mój komputer / Touch ID');
   const [registeringPasskey, setRegisteringPasskey] = useState(false);
+
+  // API Tokens & Integrations state
+  const [apiTokens, setApiTokens] = useState<any[]>([]);
+  const [newApiTokenLabel, setNewApiTokenLabel] = useState('Capture One Plugin');
+  const [creatingApiToken, setCreatingApiToken] = useState(false);
+  const [newlyCreatedToken, setNewlyCreatedToken] = useState<string | null>(null);
+  const [deleteTokenTarget, setDeleteTokenTarget] = useState<{ id: string; label: string } | null>(null);
+  const [deletingToken, setDeletingToken] = useState(false);
 
   // Custom confirmation modals for deletions
   const [deleteGalleryTarget, setDeleteGalleryTarget] = useState<{ id: string; title: string } | null>(null);
@@ -92,9 +101,18 @@ export default function AdminDashboardPage() {
     } catch {}
   };
 
-  const handleOpenSecurity = (tab: 'password' | 'passkeys' = 'password') => {
+  const fetchApiTokens = async () => {
+    try {
+      const res = await fetch('/api/admin/api-tokens');
+      const data = await parseJsonResponse(res);
+      setApiTokens(data.tokens || []);
+    } catch {}
+  };
+
+  const handleOpenSecurity = (tab: 'password' | 'passkeys' | 'integrations' = 'password') => {
     setSecurityTab(tab);
-    fetchPasskeys();
+    if (tab === 'passkeys') fetchPasskeys();
+    if (tab === 'integrations') fetchApiTokens();
     setSecurityModalOpen(true);
   };
 
@@ -185,6 +203,46 @@ export default function AdminDashboardPage() {
       toast('Błąd usuwania klucza', 'error');
     } finally {
       setDeletingPasskey(false);
+    }
+  };
+
+  const handleCreateApiToken = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setCreatingApiToken(true);
+    try {
+      const res = await fetch('/api/admin/api-tokens', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ label: newApiTokenLabel }),
+      });
+      const data = await parseJsonResponse(res);
+      if (!res.ok) throw new Error(data.error || 'Błąd tworzenia tokenu');
+      toast('Token API został wygenerowany!', 'success');
+      setNewlyCreatedToken(data.token.token);
+      setNewApiTokenLabel('Capture One Plugin');
+      fetchApiTokens();
+    } catch (err: any) {
+      toast(err.message, 'error');
+    } finally {
+      setCreatingApiToken(false);
+    }
+  };
+
+  const handleConfirmDeleteToken = async () => {
+    if (!deleteTokenTarget) return;
+    setDeletingToken(true);
+    try {
+      const res = await fetch(`/api/admin/api-tokens/${deleteTokenTarget.id}`, {
+        method: 'DELETE',
+      });
+      if (!res.ok) throw new Error('Błąd usuwania tokenu');
+      toast('Token API został unieważniony', 'info');
+      setDeleteTokenTarget(null);
+      fetchApiTokens();
+    } catch {
+      toast('Błąd usuwania tokenu API', 'error');
+    } finally {
+      setDeletingToken(false);
     }
   };
 
@@ -299,6 +357,15 @@ export default function AdminDashboardPage() {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <button
+            onClick={() => handleOpenSecurity('integrations')}
+            className="btn btn-secondary"
+            style={{ padding: '0.45rem 0.8rem', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.45rem' }}
+            title="Integracja z Capture One i tokeny API"
+          >
+            <Sliders size={14} />
+            <span>Capture One</span>
+          </button>
           <button
             onClick={() => handleOpenSecurity('password')}
             className="btn btn-secondary"
@@ -738,6 +805,29 @@ export default function AdminDashboardPage() {
                 <Fingerprint size={14} />
                 <span>Klucze Passkey {passkeys.length > 0 && `(${passkeys.length})`}</span>
               </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setSecurityTab('integrations');
+                  fetchApiTokens();
+                }}
+                className="btn btn-ghost"
+                style={{
+                  padding: '0.5rem 0.85rem',
+                  fontSize: '0.82rem',
+                  borderRadius: 0,
+                  borderBottom: securityTab === 'integrations' ? '2px solid var(--text-primary)' : '2px solid transparent',
+                  color: securityTab === 'integrations' ? 'var(--text-primary)' : 'var(--text-muted)',
+                  fontWeight: securityTab === 'integrations' ? 600 : 400,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.4rem',
+                }}
+              >
+                <Sliders size={14} />
+                <span>Capture One & API {apiTokens.length > 0 && `(${apiTokens.length})`}</span>
+              </button>
             </div>
 
             {/* TAB 1: Password Change */}
@@ -900,6 +990,132 @@ export default function AdminDashboardPage() {
                 </div>
               </div>
             )}
+
+            {/* TAB 3: Integrations & Capture One */}
+            {securityTab === 'integrations' && (
+              <div>
+                <div style={{ marginBottom: '1.25rem' }}>
+                  <p style={{ fontSize: '0.86rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                    Wtyczka <strong>photogal.coplugin</strong> integruje się bezpośrednio z menu publikacji Capture One Pro (<code>Image &rarr; Publish &rarr; photogal</code>) oraz menu <em>Open With</em> w przepisach eksportu.
+                  </p>
+                </div>
+
+                {/* Installation card */}
+                <div style={{ padding: '1rem', background: 'var(--bg-tertiary)', borderRadius: 'var(--radius-xs)', border: '1px solid var(--border-hairline)', marginBottom: '1.5rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem' }}>
+                    <div>
+                      <div style={{ fontSize: '0.88rem', fontWeight: 600 }}>Wtyczka photogal.coplugin (macOS)</div>
+                      <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>Universal Binary (Apple Silicon + Intel) dla Capture One Pro 16+</div>
+                    </div>
+                    <a
+                      href="/api/admin/integrations/captureone/download"
+                      className="btn btn-secondary"
+                      style={{ padding: '0.45rem 0.8rem', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.45rem' }}
+                      download
+                    >
+                      <Download size={14} />
+                      <span>Pobierz wtyczkę (.zip)</span>
+                    </a>
+                  </div>
+                  <div style={{ marginTop: '0.85rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border-hairline)', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+                    <strong>Szybka instalacja w terminalu na tym komputerze:</strong>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.35rem', background: 'var(--bg-primary)', padding: '0.45rem 0.65rem', borderRadius: '4px', fontFamily: 'monospace', fontSize: '0.75rem' }}>
+                      <span style={{ flex: 1, overflowX: 'auto', whiteSpace: 'nowrap' }}>./integrations/captureone/install.sh</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText('./integrations/captureone/install.sh');
+                          toast('Skopiowano polecenie instalacji', 'success');
+                        }}
+                        className="btn btn-ghost"
+                        style={{ padding: '0.2rem 0.4rem', height: 'auto', fontSize: '0.7rem' }}
+                      >
+                        Kopiuj
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Newly created token banner if any */}
+                {newlyCreatedToken && (
+                  <div style={{ padding: '1rem', background: 'rgba(34, 197, 94, 0.08)', border: '1px solid rgba(34, 197, 94, 0.3)', borderRadius: 'var(--radius-xs)', marginBottom: '1.5rem' }}>
+                    <div style={{ fontSize: '0.84rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.3rem' }}>
+                      Twój nowy token API (skopiuj go teraz — nie będzie już więcej widoczny):
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'var(--bg-primary)', padding: '0.5rem 0.75rem', borderRadius: '4px', fontFamily: 'monospace', fontSize: '0.82rem' }}>
+                      <span style={{ flex: 1, wordBreak: 'break-all' }}>{newlyCreatedToken}</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(newlyCreatedToken);
+                          toast('Skopiowano token API do schowka', 'success');
+                        }}
+                        className="btn btn-secondary"
+                        style={{ padding: '0.35rem 0.65rem', fontSize: '0.75rem' }}
+                      >
+                        Kopiuj
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Token list */}
+                <div style={{ marginBottom: '1.5rem' }}>
+                  <label className="form-label">Aktywne tokeny API</label>
+                  {apiTokens.length === 0 ? (
+                    <div style={{ padding: '1rem', textAlign: 'center', background: 'var(--bg-tertiary)', borderRadius: 'var(--radius-xs)', color: 'var(--text-muted)', fontSize: '0.82rem' }}>
+                      Brak aktywnych tokenów. Wygeneruj token poniżej, aby połączyć Capture One.
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                      {apiTokens.map((t) => (
+                        <div key={t.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.65rem 0.85rem', background: 'var(--bg-tertiary)', borderRadius: 'var(--radius-xs)', border: '1px solid var(--border-hairline)' }}>
+                          <div>
+                            <div style={{ fontSize: '0.86rem', fontWeight: 500 }}>{t.label}</div>
+                            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                              Utworzono: {new Date(t.created_at).toLocaleDateString()} {t.last_used_at ? `• Ostatnie użycie: ${new Date(t.last_used_at).toLocaleDateString()}` : '• Nie użyto jeszcze'}
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setDeleteTokenTarget({ id: t.id, label: t.label })}
+                            className="btn btn-danger btn-icon"
+                            style={{ width: '28px', height: '28px' }}
+                            title="Unieważnij token"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Generate new token form */}
+                <form onSubmit={handleCreateApiToken} style={{ padding: '1rem', border: '1px dashed var(--border-subtle)', borderRadius: 'var(--radius-xs)', background: 'var(--bg-secondary)' }}>
+                  <div className="form-group" style={{ marginBottom: '0.85rem' }}>
+                    <label className="form-label">Etykieta nowego tokenu</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      value={newApiTokenLabel}
+                      onChange={(e) => setNewApiTokenLabel(e.target.value)}
+                      placeholder="np. Capture One Pro Studio"
+                      required
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={creatingApiToken}
+                    className="btn btn-primary"
+                    style={{ width: '100%', padding: '0.6rem', fontSize: '0.82rem' }}
+                  >
+                    <Key size={14} />
+                    {creatingApiToken ? 'Generowanie...' : 'Wygeneruj nowy token API'}
+                  </button>
+                </form>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -990,6 +1206,51 @@ export default function AdminDashboardPage() {
                 disabled={deletingPasskey}
               >
                 <span>{deletingPasskey ? 'Usuwanie...' : 'Usuń klucz'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete API Token Confirmation Modal */}
+      {deleteTokenTarget && (
+        <div className="modal-overlay" onClick={() => !deletingToken && setDeleteTokenTarget(null)}>
+          <div className="modal-card" style={{ maxWidth: '420px' }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
+              <h2 className="serif-title" style={{ fontSize: '1.35rem', color: '#ef4444' }}>
+                Unieważnij token API
+              </h2>
+              <button
+                type="button"
+                onClick={() => !deletingToken && setDeleteTokenTarget(null)}
+                style={{ color: 'var(--text-muted)' }}
+                disabled={deletingToken}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', lineHeight: 1.6, marginBottom: '1.5rem' }}>
+              Czy na pewno chcesz unieważnić token <strong style={{ color: 'var(--text-primary)' }}>„{deleteTokenTarget.label}”</strong>?
+              Wszystkie aplikacje i wtyczki (w tym Capture One) korzystające z tego tokenu natychmiast utracą dostęp.
+            </p>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.65rem' }}>
+              <button
+                type="button"
+                onClick={() => setDeleteTokenTarget(null)}
+                className="btn btn-secondary"
+                disabled={deletingToken}
+              >
+                Anuluj
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDeleteToken}
+                className="btn btn-danger-solid"
+                disabled={deletingToken}
+              >
+                <span>{deletingToken ? 'Unieważnianie...' : 'Unieważnij token'}</span>
               </button>
             </div>
           </div>

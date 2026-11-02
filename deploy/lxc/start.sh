@@ -16,3 +16,4 @@ fi
 # Ultimate fallback: start via npm start
 echo "Warning: Standalone server not found. Starting with npm start..."
 exec npm start
+
