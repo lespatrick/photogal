@@ -104,3 +104,28 @@ journalctl -u photogal -f
 # Restart po aktualizacji
 systemctl restart photogal
 ```
+
+---
+
+## ⚡ Błyskawiczne Aktualizacje (GitHub Actions Pre-Built Standalone)
+
+Dzięki workflow **GitHub Actions**, każdy push do gałęzi `main` oraz każdy release tag buduje gotowy, zoptymalizowany pakiet `photogal-standalone-linux-x64.tar.gz` (w środowisku Debian 12 Bookworm).
+
+Podczas instalacji lub aktualizacji:
+- Kontener pobiera gotowy pakiet standalone (~20MB) zamiast kompilować Next.js ze źródeł.
+- Czas aktualizacji skraca się z **5 minut do ~5 sekund**, a przerwa w działaniu usługi wynosi **poniżej 2 sekund**.
+- Brak obciążenia procesora i pamięci RAM węzła Proxmox / kontenera.
+
+### Uruchomienie aktualizacji w kontenerze:
+```bash
+/opt/photogal/deploy/lxc/update.sh
+```
+
+### Opcje zaawansowane:
+```bash
+# Wymuszenie kompilacji ze źródeł (git pull + npm ci + npm run build)
+/opt/photogal/deploy/lxc/update.sh --build-from-source
+
+# Aktualizacja do konkretnego wydania (tagu)
+/opt/photogal/deploy/lxc/update.sh --tag=v1.0.0
+```

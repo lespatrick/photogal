@@ -1,0 +1,123 @@
+name: Build & Release Standalone (LXC)
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*.*.*'
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build Standalone Bundle (Debian 12)
+    runs-on: ubuntu-latest
+    container:
+      image: node:22-bookworm-slim
+    steps:
+      - name: Install build dependencies
+        run: |
+          apt-get update -y
+          apt-get install -y --no-install-recommends git python3 make g++ tar gzip ca-certificates
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Run test suite
+        run: npm test
+
+      - name: Build Next.js standalone application
+        run: |
+          export NODE_ENV=production
+          export NEXT_TELEMETRY_DISABLED=1
+          npm run build
+
+      - name: Package standalone bundle
+        run: |
+          set -e
+          # If standalone output was generated in a nested folder, flatten it
+          if [ ! -f ".next/standalone/server.js" ] && [ -d ".next/standalone" ]; then
+            NESTED_SERVER=$(find .next/standalone -maxdepth 4 -name "server.js" | head -n 1)
+            if [ -n "$NESTED_SERVER" ]; then
+              echo "Flattening standalone from $(dirname "$NESTED_SERVER")..."
+              cp -a "$(dirname "$NESTED_SERVER")/." .next/standalone/
+            fi
+          fi
+
+          # Copy static files, public assets, scripts, and deployment helpers into standalone
+          cp -r public .next/standalone/
+          mkdir -p .next/standalone/.next
+          cp -r .next/static .next/standalone/.next/
+          cp -r scripts .next/standalone/
+          cp -r deploy .next/standalone/
+
+          # Create standalone tarball and sha256 checksum
+          cd .next/standalone
+          tar -czf ../../photogal-standalone-linux-x64.tar.gz .
+          cd ../..
+          sha256sum photogal-standalone-linux-x64.tar.gz > photogal-standalone-linux-x64.tar.gz.sha256
+
+      - name: Upload standalone artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: photogal-standalone-linux-x64
+          path: |
+            photogal-standalone-linux-x64.tar.gz
+            photogal-standalone-linux-x64.tar.gz.sha256
+          retention-days: 5
+
+  release:
+    name: Publish Release Assets
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: photogal-standalone-linux-x64
+
+      - name: Update latest tag on main branch
+        if: github.ref_name == 'main'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const ref = 'tags/latest';
+            try {
+              await github.rest.git.updateRef({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                ref: ref,
+                sha: context.sha,
+                force: true
+              });
+              console.log('Updated existing tag refs/' + ref + ' to ' + context.sha);
+            } catch (err) {
+              await github.rest.git.createRef({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                ref: 'refs/' + ref,
+                sha: context.sha
+              });
+              console.log('Created new tag refs/' + ref + ' at ' + context.sha);
+            }
+
+      - name: Publish or Update GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || 'latest' }}
+          name: ${{ github.ref_type == 'tag' && github.ref_name || 'Latest Build (main)' }}
+          prerelease: ${{ github.ref_type != 'tag' }}
+          make_latest: ${{ github.ref_type == 'tag' }}
+          target_commitish: ${{ github.sha }}
+          files: |
+            photogal-standalone-linux-x64.tar.gz
+            photogal-standalone-linux-x64.tar.gz.sha256
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+

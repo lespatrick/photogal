@@ -2,7 +2,12 @@
 set -e
 cd /opt/photogal
 
-# If standalone server exists, launch it
+# 1. Check for root standalone server (recommended layout)
+if [ -f "server.js" ]; then
+    exec /usr/bin/node server.js
+fi
+
+# 2. Check for nested standalone server
 if [ -f ".next/standalone/server.js" ]; then
     exec /usr/bin/node .next/standalone/server.js
 fi

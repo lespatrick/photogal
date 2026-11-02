@@ -195,6 +195,9 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/lespatrick/photogal/main
 
 # 2. Lub instalacja wewnątrz istniejącego kontenera Debian 12 / Ubuntu 24.04:
 apt-get update -y && apt-get install -y curl && curl -fsSL https://raw.githubusercontent.com/lespatrick/photogal/main/deploy/lxc/install.sh | bash
+
+# 3. Błyskawiczna aktualizacja w działającym kontenerze (5 sekund dzięki pre-buildom GitHub Actions):
+/opt/photogal/deploy/lxc/update.sh
 ```
 
 Instrukcje podpinania udziałów sieciowych NAS / ZFS oraz pliki konfiguracyjne systemd znajdują się w folderze [`deploy/lxc/`](deploy/lxc/).
