@@ -3,13 +3,19 @@ import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
 
-const DATA_DIR = path.resolve(process.cwd(), 'data');
+const DATA_DIR = process.env.DATA_DIR
+  ? path.resolve(process.env.DATA_DIR)
+  : path.resolve(process.cwd(), 'data');
 
-if (!fs.existsSync(DATA_DIR)) {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
+if (!fs.existsSync(/*turbopackIgnore: true*/ DATA_DIR)) {
+  try {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+  } catch {}
 }
 
-const DB_PATH = path.resolve(DATA_DIR, 'photogal.db');
+const DB_PATH = process.env.DATABASE_PATH
+  ? path.resolve(process.env.DATABASE_PATH)
+  : path.resolve(DATA_DIR, 'photogal.db');
 
 const db: Database.Database = new Database(DB_PATH);
 

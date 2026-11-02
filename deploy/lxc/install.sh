@@ -73,11 +73,48 @@ if [ -d "$INSTALL_DIR/.next/standalone" ]; then
     ln -sfn "$INSTALL_DIR/storage" "$INSTALL_DIR/.next/standalone/storage"
 fi
 
-# 7. Set directory permissions
+# 7. Create default .env file if it does not exist
+if [ ! -f "$INSTALL_DIR/.env" ]; then
+    echo -e "${BLUE}==>${NC} Generating initial .env configuration..."
+    RANDOM_AUTH_SECRET=$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))" 2>/dev/null || openssl rand -hex 32)
+    cat <<EOF > "$INSTALL_DIR/.env"
+# ==============================================================================
+# photogal — Environment Configuration
+# ==============================================================================
+NODE_ENV=production
+PORT=3000
+HOSTNAME=0.0.0.0
+NEXT_TELEMETRY_DISABLED=1
+
+# Initial Administrator Password (change after first login)
+ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin123}
+
+# Unique HMAC session signing secret (auto-generated)
+AUTH_SECRET=${RANDOM_AUTH_SECRET}
+
+# Allow direct HTTP access on LAN/IP (set to false when behind HTTPS reverse proxy)
+ALLOW_HTTP=${ALLOW_HTTP:-true}
+
+# Trust Reverse Proxy headers (X-Forwarded-For, X-Real-IP)
+TRUST_PROXY=true
+
+# Custom Storage & Database Paths (defaults to /opt/photogal/storage and /opt/photogal/data)
+# STORAGE_DIR=/mnt/nas/photos
+# DATA_DIR=/mnt/nas/data
+
+# Optional: WebAuthn / Passkey & Domain Security (uncomment and configure for domain)
+# ALLOWED_HOSTS=gallery.yourdomain.com
+# RP_ID=gallery.yourdomain.com
+# RP_ORIGIN=https://gallery.yourdomain.com
+EOF
+    chmod 600 "$INSTALL_DIR/.env"
+fi
+
+# 8. Set directory permissions
 mkdir -p "$INSTALL_DIR/data" "$INSTALL_DIR/storage"
 chown -R photogal:photogal "$INSTALL_DIR"
 
-# 8. Setup systemd service (if systemd is running)
+# 9. Setup systemd service (if systemd is running)
 if pidof systemd >/dev/null 2>&1 || [ -d /run/systemd/system ]; then
     echo -e "${BLUE}==>${NC} Installing systemd service..."
     cp "$INSTALL_DIR/deploy/lxc/photogal.service" /etc/systemd/system/photogal.service
@@ -93,5 +130,5 @@ IP_ADDR=$(hostname -I 2>/dev/null | awk '{print $1}' || echo "localhost")
 echo -e "\n${GREEN}================================================================${NC}"
 echo -e "${GREEN}✓ photogal successfully installed in LXC!${NC}"
 echo -e "  URL:   http://${IP_ADDR}:3000"
-echo -e "  Admin: http://${IP_ADDR}:3000/admin (Login: admin, Hasło: admin123)"
+echo -e "  Admin: http://${IP_ADDR}:3000/admin (Login: admin, Hasło: ${ADMIN_PASSWORD:-admin123})"
 echo -e "${GREEN}================================================================${NC}"

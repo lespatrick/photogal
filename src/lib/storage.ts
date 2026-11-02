@@ -1,7 +1,15 @@
 import path from 'path';
 import fs from 'fs';
 
-export const STORAGE_DIR = path.resolve(process.cwd(), 'storage');
+export const STORAGE_DIR = process.env.STORAGE_DIR
+  ? path.resolve(process.env.STORAGE_DIR)
+  : path.resolve(process.cwd(), 'storage');
+
+if (!fs.existsSync(/*turbopackIgnore: true*/ STORAGE_DIR)) {
+  try {
+    fs.mkdirSync(STORAGE_DIR, { recursive: true });
+  } catch {}
+}
 
 export function getSafeGalleryBase(galleryId: string): string | null {
   if (!galleryId || typeof galleryId !== 'string') return null;
@@ -64,7 +72,7 @@ export function deleteGalleryStorage(galleryId: string) {
   if (!base) return;
   const galleriesRoot = path.resolve(STORAGE_DIR, 'galleries');
   // Extra safeguard: base must be strictly inside galleriesRoot and unequal to it
-  if (base.startsWith(galleriesRoot + path.sep) && base !== galleriesRoot && fs.existsSync(base)) {
+  if (base.startsWith(galleriesRoot + path.sep) && base !== galleriesRoot && fs.existsSync(/*turbopackIgnore: true*/ base)) {
     fs.rmSync(base, { recursive: true, force: true });
   }
 }
@@ -77,13 +85,13 @@ export function deletePhotoFiles(galleryId: string, originalPath: string, thumbP
   const fullThumb = resolveSafeStoragePath(thumbPath);
   const fullPreview = resolveSafeStoragePath(previewPath);
 
-  if (fullOriginal && fullOriginal.startsWith(galleryBase + path.sep) && fs.existsSync(fullOriginal)) {
+  if (fullOriginal && fullOriginal.startsWith(galleryBase + path.sep) && fs.existsSync(/*turbopackIgnore: true*/ fullOriginal)) {
     try { fs.unlinkSync(fullOriginal); } catch {}
   }
-  if (fullThumb && fullThumb.startsWith(galleryBase + path.sep) && fs.existsSync(fullThumb)) {
+  if (fullThumb && fullThumb.startsWith(galleryBase + path.sep) && fs.existsSync(/*turbopackIgnore: true*/ fullThumb)) {
     try { fs.unlinkSync(fullThumb); } catch {}
   }
-  if (fullPreview && fullPreview.startsWith(galleryBase + path.sep) && fs.existsSync(fullPreview)) {
+  if (fullPreview && fullPreview.startsWith(galleryBase + path.sep) && fs.existsSync(/*turbopackIgnore: true*/ fullPreview)) {
     try { fs.unlinkSync(fullPreview); } catch {}
   }
 }

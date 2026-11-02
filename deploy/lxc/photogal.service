@@ -6,12 +6,12 @@ After=network.target
 Type=simple
 User=photogal
 Group=photogal
-WorkingDirectory=/opt/photogal
+WorkingDirectory=/opt/photogal/.next/standalone
+EnvironmentFile=-/opt/photogal/.env
 Environment=NODE_ENV=production
 Environment=PORT=3000
 Environment=HOSTNAME=0.0.0.0
-Environment=AUTH_SECRET=photogal-production-secret-change-in-production-key-32b
-Environment=ADMIN_PASSWORD=admin123
+Environment=NEXT_TELEMETRY_DISABLED=1
 
 ExecStart=/usr/bin/node server.js
 Restart=always
@@ -23,7 +23,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=full
 ProtectHome=true
-ReadWritePaths=/opt/photogal/data /opt/photogal/storage
+ReadWritePaths=-/opt/photogal/data -/opt/photogal/storage -/opt/photogal/.next/standalone -/mnt -/media
 
 # Resource limits
 LimitNOFILE=65535
