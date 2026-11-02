@@ -12,9 +12,11 @@
 [![PWA](https://img.shields.io/badge/PWA-Ready-5A0FC8?style=for-the-badge&logo=pwa&logoColor=white)](https://web.dev/progressive-web-apps/)
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?style=for-the-badge&logo=docker&logoColor=white)](https://www.docker.com/)
 [![LXC](https://img.shields.io/badge/LXC-Proxmox_Ready-E57000?style=for-the-badge&logo=proxmox&logoColor=white)](deploy/lxc/)
+[![Capture One](https://img.shields.io/badge/Capture_One-Plugin_Ready-101820?style=for-the-badge&logoColor=white)](integrations/captureone/)
 
 [Przegląd](#-o-projekcie) •
 [Funkcje](#-kluczowe-funkcjonalności) •
+[Capture One](#-integracja-z-capture-one-pro) •
 [Bezpieczeństwo](#-architektura-bezpieczeństwa) •
 [Szybki Start](#-instalacja-i-uruchomienie) •
 [Docker](#-konteneryzacja-docker) •
@@ -46,6 +48,7 @@ Aplikacja powstała jako niezależna, self-hosted alternatywa dla komercyjnych s
   * W locie generuje miniatury siatki **WebP (do 600px)** oraz podglądy pełnoekranowe **WebP (do 2200px)** przy użyciu biblioteki `sharp`.
   * Zachowuje pliki źródłowe do eksportu i pobierania pełnej jakości.
 * **Płynny podgląd wyborów i notatek**: Zliczanie polubień w czasie rzeczywistym, wgląd w uwagi klienta i status realizacji.
+* **Bezpośrednia integracja z Capture One & Tokeny API**: Zarządzanie personalnymi tokenami dostępu (`pg_live_...`) oraz 1-klikowe pobieranie natywnej wtyczki eksportu do Capture One Pro.
 * **Eksport do Lightroom & Capture One**:
   * Kopiowanie nazw plików oddzielonych przecinkami (`_DSC0012.JPG, _DSC0015.JPG`).
   * Kopiowanie z rozdzieleniem spacjami (wyszukiwarka biblioteki Lightroom).
@@ -68,6 +71,46 @@ Aplikacja powstała jako niezależna, self-hosted alternatywa dla komercyjnych s
   * Podsumowanie wyboru z polem na dodatkowe uwagi od klienta.
   * Automatyczne oznaczenie sesji jako zrealizowanej i zablokowanie dalszych modyfikacji.
 * **PWA & Offline cache**: Możliwość zainstalowania jako aplikacja na ekranie głównym telefonu lub komputera (Service Worker + Web App Manifest).
+
+---
+
+## 📸 Integracja z Capture One Pro
+
+Platforma **photogal** oferuje dedykowaną, natywną wtyczkę publikacji dla **Capture One Pro** (macOS, Universal Binary dla procesorów Apple Silicon oraz Intel).
+
+Fotograf może wyeksportować i opublikować zdjęcia bezpośrednio z programu bez konieczności ręcznego zapisywania plików na dysku i przeciągania ich w przeglądarce.
+
+```
+Capture One Pro (macOS)                    photogal Server
+┌───────────────────────┐                 ┌───────────────────────┐
+│ RAW Variants          │                 │ API Token Auth        │
+│    │                  │  Bearer Token   │    │                  │
+│ Process Recipe (JPEG) │ ──────────────> │ Upload Route          │
+│    │                  │ Multipart Files │    │                  │
+│ photogal.coplugin     │                 │ Sharp (WebP Pipeline) │
+└───────────────────────┘                 └───────────────────────┘
+```
+
+### Główne możliwości wtyczki:
+* **Menu Publikacji (`Image -> Publish -> photogal`)**: Zaznacz ujęcia w katalogu lub sesji i kliknij *Publish*.
+* **Wsparcie dla Przepisów Eksportu (*Export Recipes*)**: Możliwość wyboru `photogal` w polu *Open With* dowolnego przepisu eksportu.
+* **Dynamiczna lista galerii**: Wtyczka łączy się z Twoją instancją photogal i pozwala wybrać docelową sesję prosto z rozwijanej listy.
+* **Tworzenie nowej sesji w locie**: Opcja `[ + Create New Gallery ]` umożliwia podanie tytułu, daty i PINu bezpośrednio w oknie Capture One.
+* **Natywny wskaźnik postępu**: Postęp wysyłania plików jest widoczny w oknie aktywności w tle Capture One (*Background Activity*).
+* **Otwarcie sesji w przeglądarce**: Po zakończeniu uploadu Capture One wyświetla powiadomienie z bezpośrednim linkiem do gotowej galerii.
+
+### Szybka instalacja:
+
+#### Opcja A: Z poziomu terminala na komputerze z Capture One
+```bash
+./integrations/captureone/install.sh
+```
+*Skrypt kompiluje universal binary, instaluje `photogal.coplugin` w `~/Library/Application Support/Capture One/Plug-ins/` oraz dodaje skrypt do menu `Scripts`.*
+
+#### Opcja B: Pobranie z panelu fotografa
+1. W panelu administratora (`/admin`) kliknij przycisk **Capture One** na górnym pasku.
+2. Wygeneruj token API i pobierz gotową paczkę `photogal.coplugin.zip`.
+3. Przeciągnij rozpakowaną wtyczkę do okna **Capture One -> Ustawienia / Preferencje -> Wtyczki**.
 
 ---
 
@@ -173,6 +216,8 @@ Instrukcje podpinania udziałów sieciowych NAS / ZFS oraz pliki konfiguracyjne 
 ```text
 photogal/
 ├── data/                      # Baza danych SQLite (photogal.db, WAL)
+├── integrations/              # Natywne integracje z oprogramowaniem studyjnym
+│   └── captureone/            # Wtyczka Capture One Pro (macOS .coplugin + AppleScript)
 ├── public/                    # Zasoby statyczne, manifest PWA, Service Worker
 ├── scripts/                   # Skrypt inicjalizacji demo (seed-demo.js)
 ├── storage/                   # Zdjęcia oryginalne, miniatury WebP i podglądy
