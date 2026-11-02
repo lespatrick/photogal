@@ -158,7 +158,7 @@ export default function GalleryManagementPage({
 
     let totalUploaded = 0;
     let failedCount = 0;
-    const CHUNK_SIZE = 1; // Upload 1 photo per request for granular progress, minimal memory footprint, and isolated error handling
+    const CHUNK_SIZE = 2; // Chunk upload in batches of 2 photos per request
 
     try {
       for (let i = 0; i < fileList.length; i += CHUNK_SIZE) {

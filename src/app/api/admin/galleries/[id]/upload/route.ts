@@ -21,10 +21,11 @@ export async function POST(
       return NextResponse.json({ error: 'Galeria nie istnieje' }, { status: 404 });
     }
     const actualId = gallery.id;
+    const MAX_UPLOAD_BYTES = 10 * 1024 * 1024 * 1024; // 10 GB
 
     const contentLength = req.headers.get('content-length');
-    if (contentLength && parseInt(contentLength, 10) > 310 * 1024 * 1024) {
-      return NextResponse.json({ error: 'Łączny rozmiar żądania przekracza maksymalny limit 300MB' }, { status: 413 });
+    if (contentLength && parseInt(contentLength, 10) > MAX_UPLOAD_BYTES) {
+      return NextResponse.json({ error: 'Łączny rozmiar żądania przekracza maksymalny limit 10GB' }, { status: 413 });
     }
 
     const formData = await req.formData();
@@ -34,13 +35,13 @@ export async function POST(
       return NextResponse.json({ error: 'Brak plików do wgrania' }, { status: 400 });
     }
 
-    if (files.length > 50) {
-      return NextResponse.json({ error: 'Maksymalna wielkość pojedynczej paczki to 50 plików' }, { status: 400 });
+    if (files.length > 500) {
+      return NextResponse.json({ error: 'Maksymalna wielkość pojedynczej paczki to 500 plików' }, { status: 400 });
     }
 
     const totalBatchBytes = files.reduce((acc, f) => acc + (f?.size || 0), 0);
-    if (totalBatchBytes > 300 * 1024 * 1024) {
-      return NextResponse.json({ error: 'Łączny rozmiar paczki przekracza maksymalny limit 300MB' }, { status: 400 });
+    if (totalBatchBytes > MAX_UPLOAD_BYTES) {
+      return NextResponse.json({ error: 'Łączny rozmiar paczki przekracza maksymalny limit 10GB' }, { status: 400 });
     }
 
     const currentMaxOrder = (db.prepare('SELECT MAX(order_index) as max_ord FROM photos WHERE gallery_id = ?').get(actualId) as any)?.max_ord || 0;
@@ -56,8 +57,8 @@ export async function POST(
           continue;
         }
 
-        if (file.size > 50 * 1024 * 1024) {
-          errors.push({ filename: file.name || 'nieznany', error: 'Plik przekracza maksymalny limit 50MB' });
+        if (file.size > MAX_UPLOAD_BYTES) {
+          errors.push({ filename: file.name || 'nieznany', error: 'Plik przekracza maksymalny limit 10GB' });
           continue;
         }
 
