@@ -39,9 +39,22 @@
 - (instancetype)initWithIdentifier:(NSString *)identifier title:(NSString *)title;
 - (NSString *)identifier;
 - (NSString *)title;
+- (void)setTitle:(NSString *)title;
+- (void)setInformativeText:(NSString *)informativeText;
+- (NSString *)informativeText;
 @end
 
 @interface COSettingsElement : COSettingsBase
+@end
+
+@interface COSettingsItemsGroup : COSettingsElement
+- (void)setItems:(NSArray *)items;
+- (NSArray *)items;
+@end
+
+@interface COSettingsElementsGroup : COSettingsBase
+- (void)setElements:(NSArray *)elements;
+- (NSArray *)elements;
 @end
 
 @interface COSettingsItem : COSettingsElement
@@ -207,11 +220,13 @@ static NSString *ExtractSettingString(id obj) {
     if (!self.targetPinCode) self.targetPinCode = [defs stringForKey:kPrefNewPin] ?: @"";
 
     // 3. Server URL setting
-    COSettingsTextItem *urlItem = [[COSettingsTextItem alloc] initWithIdentifier:@"server_url" title:@"photogal Server URL"];
+    COSettingsTextItem *urlItem = [[COSettingsTextItem alloc] initWithIdentifier:@"server_url" title:@"Server"];
+    [urlItem setInformativeText:@"photogal server URL (e.g. http://localhost:3000 or https://galleries.yourstudio.com)"];
     [urlItem setValue:self.serverUrl];
 
     // 4. API Token setting (masked)
-    COSettingsTextItem *tokenItem = [[COSettingsTextItem alloc] initWithIdentifier:@"api_token" title:@"API Token (pg_live_...)"];
+    COSettingsTextItem *tokenItem = [[COSettingsTextItem alloc] initWithIdentifier:@"api_token" title:@"Token"];
+    [tokenItem setInformativeText:@"photogal API Token (starts with pg_live_...)"];
     [tokenItem setSecure:YES];
     [tokenItem setValue:self.apiToken];
 
@@ -236,7 +251,8 @@ static NSString *ExtractSettingString(id obj) {
         }
     }
 
-    COSettingsListItem *galleryChoice = [[COSettingsListItem alloc] initWithIdentifier:@"gallery_choice" title:@"Target Gallery"];
+    COSettingsListItem *galleryChoice = [[COSettingsListItem alloc] initWithIdentifier:@"gallery_choice" title:@"Gallery"];
+    [galleryChoice setInformativeText:@"Select target gallery or create a new one"];
     [galleryChoice setOptions:options];
 
     // If previously selected gallery doesn't exist, stay with __new__ or first gallery
@@ -250,16 +266,34 @@ static NSString *ExtractSettingString(id obj) {
     [galleryChoice setValue:self.galleryChoice];
 
     // 6. New gallery parameters (in case __new__ is selected)
-    COSettingsTextItem *newTitle = [[COSettingsTextItem alloc] initWithIdentifier:@"new_title" title:@"New Gallery Title"];
+    COSettingsTextItem *newTitle = [[COSettingsTextItem alloc] initWithIdentifier:@"new_title" title:@"Title"];
+    [newTitle setInformativeText:@"New gallery title"];
     [newTitle setValue:self.targetGalleryTitle ?: @""];
 
-    COSettingsTextItem *newDate = [[COSettingsTextItem alloc] initWithIdentifier:@"new_date" title:@"Shoot Date (YYYY-MM-DD)"];
+    COSettingsTextItem *newDate = [[COSettingsTextItem alloc] initWithIdentifier:@"new_date" title:@"Date"];
+    [newDate setInformativeText:@"Shoot date (YYYY-MM-DD)"];
     [newDate setValue:self.targetShootDate ?: [df stringFromDate:[NSDate date]]];
 
-    COSettingsTextItem *newPin = [[COSettingsTextItem alloc] initWithIdentifier:@"new_pin" title:@"PIN Code (4-12 digits, optional)"];
+    COSettingsTextItem *newPin = [[COSettingsTextItem alloc] initWithIdentifier:@"new_pin" title:@"PIN"];
+    [newPin setInformativeText:@"Client access PIN (4-12 digits, optional)"];
     [newPin setValue:self.targetPinCode ?: @""];
 
-    return @[urlItem, tokenItem, galleryChoice, newTitle, newDate, newPin];
+    // 7. Group into Gallery and Connection tabs
+    NSMutableArray<COSettingsItem *> *galleryItems = [NSMutableArray array];
+    [galleryItems addObject:galleryChoice];
+    if ([self.galleryChoice isEqualToString:@"__new__"]) {
+        [galleryItems addObject:newTitle];
+        [galleryItems addObject:newDate];
+        [galleryItems addObject:newPin];
+    }
+
+    COSettingsItemsGroup *galleryGroup = [[COSettingsItemsGroup alloc] initWithIdentifier:@"gallery_group" title:@"Gallery"];
+    [galleryGroup setItems:galleryItems];
+
+    COSettingsItemsGroup *accountGroup = [[COSettingsItemsGroup alloc] initWithIdentifier:@"account_group" title:@"Connection"];
+    [accountGroup setItems:@[urlItem, tokenItem]];
+
+    return @[galleryGroup, accountGroup];
 }
 
 - (BOOL)didUpdateValue:(id)value forSetting:(NSString *)setting action:(COPluginAction *)action settings:(NSDictionary *)settings callbackAction:(NSUInteger *)callback error:(NSError **)error {
@@ -280,6 +314,7 @@ static NSString *ExtractSettingString(id obj) {
         self.galleryChoice = strVal;
         [defs setObject:strVal forKey:kPrefGalleryId];
         [defs synchronize];
+        if (callback) *callback = 1; // Request Capture One to reload settings list
     } else if ([setting isEqualToString:@"new_title"]) {
         self.targetGalleryTitle = strVal;
         [defs setObject:strVal forKey:kPrefNewTitle];
@@ -315,14 +350,14 @@ static NSString *ExtractSettingString(id obj) {
 
     if (!url || [url stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]].length == 0) {
         if (error) {
-            *error = [NSError errorWithDomain:@"photogal" code:400 userInfo:@{NSLocalizedDescriptionKey: @"Please provide the photogal Server URL in Settings."}];
+            *error = [NSError errorWithDomain:@"photogal" code:400 userInfo:@{NSLocalizedDescriptionKey: @"Please provide the photogal Server URL in the Connection tab."}];
         }
         return NO;
     }
 
     if (!token || [token stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]].length == 0) {
         if (error) {
-            *error = [NSError errorWithDomain:@"photogal" code:400 userInfo:@{NSLocalizedDescriptionKey: @"Please provide an API Token in Settings."}];
+            *error = [NSError errorWithDomain:@"photogal" code:400 userInfo:@{NSLocalizedDescriptionKey: @"Please provide an API Token in the Connection tab."}];
         }
         return NO;
     }
@@ -332,7 +367,7 @@ static NSString *ExtractSettingString(id obj) {
         NSString *newDate = self.targetShootDate ?: [defs stringForKey:kPrefNewDate];
         if (!newTitle || [newTitle stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]].length == 0) {
             if (error) {
-                *error = [NSError errorWithDomain:@"photogal" code:400 userInfo:@{NSLocalizedDescriptionKey: @"Please enter a New Gallery Title."}];
+                *error = [NSError errorWithDomain:@"photogal" code:400 userInfo:@{NSLocalizedDescriptionKey: @"Please enter a Title for the new gallery."}];
             }
             return NO;
         }
