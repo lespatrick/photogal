@@ -38,21 +38,28 @@ echo -e "${GREEN}✓${NC} Node.js version: $(node -v) | npm version: $(npm -v)"
 # 2. Setup dedicated user
 if ! id -u photogal >/dev/null 2>&1; then
     echo -e "${BLUE}==>${NC} Creating system user 'photogal'..."
-    useradd -r -m -d /opt/photogal -s /bin/bash photogal || adduser -D -h /opt/photogal -s /bin/sh photogal
+    useradd -r -d /opt/photogal -s /bin/bash photogal 2>/dev/null || adduser -D -h /opt/photogal -s /bin/sh photogal 2>/dev/null || true
 fi
 
 # 3. Setup application directory
 INSTALL_DIR="/opt/photogal"
 mkdir -p "$INSTALL_DIR"
-cd "$INSTALL_DIR"
 
 # 4. Clone or update repository
 REPO_URL="https://github.com/lespatrick/photogal.git"
 if [ ! -d "$INSTALL_DIR/.git" ]; then
     echo -e "${BLUE}==>${NC} Cloning photogal from GitHub..."
-    git clone "$REPO_URL" "$INSTALL_DIR"
+    if [ -z "$(ls -A "$INSTALL_DIR" 2>/dev/null)" ]; then
+        git clone "$REPO_URL" "$INSTALL_DIR"
+    else
+        TMP_CLONE=$(mktemp -d)
+        git clone "$REPO_URL" "$TMP_CLONE"
+        cp -a "$TMP_CLONE/." "$INSTALL_DIR/"
+        rm -rf "$TMP_CLONE"
+    fi
 else
     echo -e "${BLUE}==>${NC} Pulling latest changes..."
+    cd "$INSTALL_DIR"
     git pull origin main
 fi
 

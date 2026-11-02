@@ -240,8 +240,18 @@ fi
 echo "==> Starting LXC container #${CT_ID}..."
 pct start "${CT_ID}"
 
-echo "==> Waiting for container network..."
-sleep 8
+echo "==> Waiting for container network and DNS resolution..."
+for i in {1..20}; do
+    if pct exec "${CT_ID}" -- ping -c 1 -W 2 deb.debian.org >/dev/null 2>&1 || pct exec "${CT_ID}" -- ping -c 1 -W 2 1.1.1.1 >/dev/null 2>&1; then
+        break
+    fi
+    sleep 1
+done
+
+# Ensure curl and ca-certificates are installed inside the container
+echo "==> Preparing container packages (curl, ca-certificates)..."
+pct exec "${CT_ID}" -- apt-get update -y
+pct exec "${CT_ID}" -- apt-get install -y curl ca-certificates
 
 # 9. Install photogal inside container with configured credentials
 echo "==> Installing photogal inside container..."
