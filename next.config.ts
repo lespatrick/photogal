@@ -5,6 +5,8 @@ const nextConfig: NextConfig = {
   output: "standalone",
   experimental: {
     proxyClientMaxBodySize: "10gb",
+    // @ts-ignore
+    agentUpgrade: false,
   },
   async headers() {
     return [

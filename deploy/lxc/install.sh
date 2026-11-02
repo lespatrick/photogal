@@ -69,11 +69,22 @@ cd "$INSTALL_DIR"
 # 5. Build application
 echo -e "${BLUE}==>${NC} Installing npm dependencies & building Next.js standalone..."
 npm ci
-npm run build
+NODE_OPTIONS="--max-old-space-size=2048" npm run build
+
+# Check if server.js is in a nested directory inside standalone (can happen in certain Next.js environments)
+if [ ! -f "$INSTALL_DIR/.next/standalone/server.js" ] && [ -d "$INSTALL_DIR/.next/standalone" ]; then
+    NESTED_SERVER=$(find "$INSTALL_DIR/.next/standalone" -maxdepth 4 -name "server.js" | head -n 1 || true)
+    if [ -n "$NESTED_SERVER" ]; then
+        NESTED_DIR=$(dirname "$NESTED_SERVER")
+        echo -e "${BLUE}==>${NC} Flattening standalone folder from $NESTED_DIR..."
+        cp -a "$NESTED_DIR/." "$INSTALL_DIR/.next/standalone/"
+    fi
+fi
 
 # 6. Copy standalone output to running root
 if [ -d "$INSTALL_DIR/.next/standalone" ]; then
     cp -r "$INSTALL_DIR/public" "$INSTALL_DIR/.next/standalone/"
+    mkdir -p "$INSTALL_DIR/.next/standalone/.next"
     cp -r "$INSTALL_DIR/.next/static" "$INSTALL_DIR/.next/standalone/.next/"
     cp -r "$INSTALL_DIR/scripts" "$INSTALL_DIR/.next/standalone/" 2>/dev/null || true
     
