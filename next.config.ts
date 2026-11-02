@@ -3,6 +3,9 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   serverExternalPackages: ["better-sqlite3", "sharp", "archiver"],
   output: "standalone",
+  experimental: {
+    proxyClientMaxBodySize: "300mb",
+  },
   async headers() {
     return [
       {

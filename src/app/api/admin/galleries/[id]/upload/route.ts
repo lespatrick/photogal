@@ -119,8 +119,8 @@ export async function POST(
       photos: insertedPhotos,
       errors: errors.length > 0 ? errors : undefined,
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Upload error:', error);
-    return NextResponse.json({ error: 'Wystąpił błąd podczas wgrywania zdjęć' }, { status: 500 });
+    return NextResponse.json({ error: error?.message || 'Wystąpił błąd podczas wgrywania zdjęć' }, { status: 500 });
   }
 }
