@@ -37,7 +37,7 @@ Uruchomi się **interaktywny kreator (formularz TUI)** w stylu Proxmox Helper-Sc
 Zaloguj się do swojego kontenera Debian 12 / Ubuntu 24.04 / Alpine jako `root` i uruchom:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/lespatrick/photogal/main/deploy/lxc/install.sh | bash
+apt-get update -y && apt-get install -y curl && curl -fsSL https://raw.githubusercontent.com/lespatrick/photogal/main/deploy/lxc/install.sh | bash
 ```
 
 ---

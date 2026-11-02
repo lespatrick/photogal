@@ -148,10 +148,10 @@ Platforma **photogal** może zostać wdrożona natywnie w unprivileged kontenerz
 
 ```bash
 # 1. Automatyczne utworzenie kontenera z konsoli węzła Proxmox VE:
-curl -fsSL https://raw.githubusercontent.com/lespatrick/photogal/main/deploy/lxc/proxmox-lxc.sh | bash
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/lespatrick/photogal/main/deploy/lxc/proxmox-lxc.sh)"
 
 # 2. Lub instalacja wewnątrz istniejącego kontenera Debian 12 / Ubuntu 24.04:
-curl -fsSL https://raw.githubusercontent.com/lespatrick/photogal/main/deploy/lxc/install.sh | bash
+apt-get update -y && apt-get install -y curl && curl -fsSL https://raw.githubusercontent.com/lespatrick/photogal/main/deploy/lxc/install.sh | bash
 ```
 
 Instrukcje podpinania udziałów sieciowych NAS / ZFS oraz pliki konfiguracyjne systemd znajdują się w folderze [`deploy/lxc/`](deploy/lxc/).
