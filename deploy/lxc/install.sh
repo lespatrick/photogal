@@ -63,6 +63,9 @@ else
     git pull origin main
 fi
 
+# Ensure working directory is the application root
+cd "$INSTALL_DIR"
+
 # 5. Build application
 echo -e "${BLUE}==>${NC} Installing npm dependencies & building Next.js standalone..."
 npm ci
