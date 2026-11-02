@@ -12,23 +12,23 @@
   "dependencies": {
     "@simplewebauthn/browser": "^14.0.0",
     "@simplewebauthn/server": "^14.0.3",
+    "@types/archiver": "^8.0.0",
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
     "archiver": "^8.0.0",
     "better-sqlite3": "^13.0.3",
     "lucide-react": "^1.55.0",
     "next": "16.4.0",
     "react": "19.3.0",
     "react-dom": "19.3.0",
-    "sharp": "^0.35.5"
+    "sharp": "^0.35.5",
+    "typescript": "^5"
   },
   "devDependencies": {
-    "@types/archiver": "^8.0.0",
-    "@types/better-sqlite3": "^9.6.0",
-    "@types/node": "^20",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.4.0",
-    "tsx": "^4.23.15",
-    "typescript": "^5"
+    "tsx": "^4.23.15"
   }
 }
