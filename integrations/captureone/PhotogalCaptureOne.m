@@ -13,6 +13,8 @@
 @end
 
 @interface COPluginTask : NSObject
+- (NSDictionary *)settings;
+- (void)setSettings:(NSDictionary *)settings;
 @end
 
 @interface COFileHandlingPluginTask : COPluginTask
@@ -25,7 +27,8 @@
 @end
 
 @interface COPluginActionPublishResult : COPluginActionResult
-- (instancetype)initWithURL:(NSURL *)url message:(NSString *)message;
+- (instancetype)initWithURL:(id)url message:(NSString *)message;
+- (id)URL;
 @end
 
 @interface COPluginActionOpenWithResult : COPluginActionResult
@@ -92,11 +95,55 @@
 static NSString *const kPrefServerURL = @"photogal_server_url";
 static NSString *const kPrefAPIToken  = @"photogal_api_token";
 static NSString *const kPrefGalleryId = @"photogal_target_gallery";
+static NSString *const kPrefNewTitle  = @"photogal_new_title";
+static NSString *const kPrefNewDate   = @"photogal_new_date";
+static NSString *const kPrefNewPin    = @"photogal_new_pin";
+
+static NSString *ExtractSettingString(id obj) {
+    if (!obj) return nil;
+    if ([obj isKindOfClass:[NSString class]]) {
+        return (NSString *)obj;
+    }
+    if ([obj respondsToSelector:@selector(value)]) {
+        id v = [obj performSelector:@selector(value)];
+        if ([v isKindOfClass:[NSString class]]) return (NSString *)v;
+    }
+    if ([obj respondsToSelector:@selector(title)]) {
+        id t = [obj performSelector:@selector(title)];
+        if ([t isKindOfClass:[NSString class]]) return (NSString *)t;
+    }
+    return [obj description];
+}
 
 @interface PhotogalCaptureOne : COPluginBase <COPublishingPlugin, COOpenWithPlugin>
+
+@property (nonatomic, copy) NSString *serverUrl;
+@property (nonatomic, copy) NSString *apiToken;
+@property (nonatomic, copy) NSString *galleryChoice;
+@property (nonatomic, copy) NSString *targetGalleryTitle;
+@property (nonatomic, copy) NSString *targetShootDate;
+@property (nonatomic, copy) NSString *targetPinCode;
+
 @end
 
 @implementation PhotogalCaptureOne
+
+- (instancetype)init {
+    self = [super init];
+    if (self) {
+        NSUserDefaults *defs = [NSUserDefaults standardUserDefaults];
+        _serverUrl = [[defs stringForKey:kPrefServerURL] ?: @"http://localhost:3000" copy];
+        _apiToken = [[defs stringForKey:kPrefAPIToken] ?: @"" copy];
+        _galleryChoice = [[defs stringForKey:kPrefGalleryId] ?: @"__new__" copy];
+        _targetGalleryTitle = [[defs stringForKey:kPrefNewTitle] ?: @"" copy];
+
+        NSDateFormatter *df = [[NSDateFormatter alloc] init];
+        df.dateFormat = @"yyyy-MM-dd";
+        _targetShootDate = [[defs stringForKey:kPrefNewDate] ?: [df stringFromDate:[NSDate date]] copy];
+        _targetPinCode = [[defs stringForKey:kPrefNewPin] ?: @"" copy];
+    }
+    return self;
+}
 
 #pragma mark - Publish Actions
 
@@ -118,33 +165,63 @@ static NSString *const kPrefGalleryId = @"photogal_target_gallery";
 
 - (NSArray<COFileHandlingPluginTask *> *)tasksForAction:(COPluginAction *)action forFiles:(NSArray<NSString *> *)files error:(NSError **)error {
     COFileHandlingPluginTask *task = [[COFileHandlingPluginTask alloc] initWithAction:action files:files];
+
+    NSMutableDictionary *currentSettings = [NSMutableDictionary dictionary];
+    if (self.serverUrl) currentSettings[@"server_url"] = self.serverUrl;
+    if (self.apiToken) currentSettings[@"api_token"] = self.apiToken;
+    if (self.galleryChoice) currentSettings[@"gallery_choice"] = self.galleryChoice;
+    if (self.targetGalleryTitle) currentSettings[@"new_title"] = self.targetGalleryTitle;
+    if (self.targetShootDate) currentSettings[@"new_date"] = self.targetShootDate;
+    if (self.targetPinCode) currentSettings[@"new_pin"] = self.targetPinCode;
+
+    if ([task respondsToSelector:@selector(setSettings:)]) {
+        [task performSelector:@selector(setSettings:) withObject:currentSettings];
+    }
+
     return @[task];
 }
 
 #pragma mark - Settings UI
 
 - (NSArray<COSettingsElement *> *)settingsForAction:(COPluginAction *)action settings:(NSDictionary *)settings error:(NSError **)error {
+    // 1. Sync state from settings dictionary if passed by Capture One
+    if (settings && [settings isKindOfClass:[NSDictionary class]]) {
+        if (settings[@"server_url"]) self.serverUrl = ExtractSettingString(settings[@"server_url"]);
+        if (settings[@"api_token"]) self.apiToken = ExtractSettingString(settings[@"api_token"]);
+        if (settings[@"gallery_choice"]) self.galleryChoice = ExtractSettingString(settings[@"gallery_choice"]);
+        if (settings[@"new_title"]) self.targetGalleryTitle = ExtractSettingString(settings[@"new_title"]);
+        if (settings[@"new_date"]) self.targetShootDate = ExtractSettingString(settings[@"new_date"]);
+        if (settings[@"new_pin"]) self.targetPinCode = ExtractSettingString(settings[@"new_pin"]);
+    }
+
+    // 2. Fall back to NSUserDefaults if empty
     NSUserDefaults *defs = [NSUserDefaults standardUserDefaults];
-    
-    NSString *savedUrl = [defs stringForKey:kPrefServerURL] ?: @"http://localhost:3000";
-    NSString *savedToken = [defs stringForKey:kPrefAPIToken] ?: @"";
-    NSString *savedGallery = [defs stringForKey:kPrefGalleryId] ?: @"__new__";
+    if (!self.serverUrl || self.serverUrl.length == 0) self.serverUrl = [defs stringForKey:kPrefServerURL] ?: @"http://localhost:3000";
+    if (!self.apiToken || self.apiToken.length == 0) self.apiToken = [defs stringForKey:kPrefAPIToken] ?: @"";
+    if (!self.galleryChoice || self.galleryChoice.length == 0) self.galleryChoice = [defs stringForKey:kPrefGalleryId] ?: @"__new__";
+    if (!self.targetGalleryTitle) self.targetGalleryTitle = [defs stringForKey:kPrefNewTitle] ?: @"";
 
-    // 1. Server URL setting
+    NSDateFormatter *df = [[NSDateFormatter alloc] init];
+    df.dateFormat = @"yyyy-MM-dd";
+    if (!self.targetShootDate || self.targetShootDate.length == 0) self.targetShootDate = [defs stringForKey:kPrefNewDate] ?: [df stringFromDate:[NSDate date]];
+    if (!self.targetPinCode) self.targetPinCode = [defs stringForKey:kPrefNewPin] ?: @"";
+
+    // 3. Server URL setting
     COSettingsTextItem *urlItem = [[COSettingsTextItem alloc] initWithIdentifier:@"server_url" title:@"photogal Server URL"];
-    [urlItem setValue:savedUrl];
+    [urlItem setValue:self.serverUrl];
 
-    // 2. API Token setting (masked)
+    // 4. API Token setting (masked)
     COSettingsTextItem *tokenItem = [[COSettingsTextItem alloc] initWithIdentifier:@"api_token" title:@"API Token (pg_live_...)"];
     [tokenItem setSecure:YES];
-    [tokenItem setValue:savedToken];
+    [tokenItem setValue:self.apiToken];
 
-    // 3. Dynamic Gallery List option
+    // 5. Dynamic Gallery List option
     NSMutableArray<COSettingsListOption *> *options = [NSMutableArray array];
     [options addObject:[COSettingsListOption settingsListOptionWithValue:@"__new__" title:@"[ + Create New Gallery ]"]];
 
-    if (savedUrl.length > 0 && savedToken.length > 0) {
-        NSArray *fetchedGalleries = [self fetchGalleriesFromURL:savedUrl token:savedToken];
+    BOOL matchedExisting = NO;
+    if (self.serverUrl.length > 0 && self.apiToken.length > 0) {
+        NSArray *fetchedGalleries = [self fetchGalleriesFromURL:self.serverUrl token:self.apiToken];
         for (NSDictionary *g in fetchedGalleries) {
             NSString *gId = g[@"id"];
             NSString *gTitle = g[@"title"] ?: @"Untitled";
@@ -152,49 +229,89 @@ static NSString *const kPrefGalleryId = @"photogal_target_gallery";
             NSString *display = [NSString stringWithFormat:@"%@ (%@)", gTitle, gDate];
             if (gId) {
                 [options addObject:[COSettingsListOption settingsListOptionWithValue:gId title:display]];
+                if ([gId isEqualToString:self.galleryChoice]) {
+                    matchedExisting = YES;
+                }
             }
         }
     }
 
     COSettingsListItem *galleryChoice = [[COSettingsListItem alloc] initWithIdentifier:@"gallery_choice" title:@"Target Gallery"];
     [galleryChoice setOptions:options];
-    [galleryChoice setValue:savedGallery];
 
-    // 4. New gallery parameters (in case __new__ is selected)
+    // If previously selected gallery doesn't exist, stay with __new__ or first gallery
+    if (!matchedExisting && ![self.galleryChoice isEqualToString:@"__new__"]) {
+        if (options.count > 1) {
+            self.galleryChoice = [options[1] value];
+        } else {
+            self.galleryChoice = @"__new__";
+        }
+    }
+    [galleryChoice setValue:self.galleryChoice];
+
+    // 6. New gallery parameters (in case __new__ is selected)
     COSettingsTextItem *newTitle = [[COSettingsTextItem alloc] initWithIdentifier:@"new_title" title:@"New Gallery Title"];
-    [newTitle setValue:@""];
+    [newTitle setValue:self.targetGalleryTitle ?: @""];
 
-    NSDateFormatter *df = [[NSDateFormatter alloc] init];
-    df.dateFormat = @"yyyy-MM-dd";
     COSettingsTextItem *newDate = [[COSettingsTextItem alloc] initWithIdentifier:@"new_date" title:@"Shoot Date (YYYY-MM-DD)"];
-    [newDate setValue:[df stringFromDate:[NSDate date]]];
+    [newDate setValue:self.targetShootDate ?: [df stringFromDate:[NSDate date]]];
 
     COSettingsTextItem *newPin = [[COSettingsTextItem alloc] initWithIdentifier:@"new_pin" title:@"PIN Code (4-12 digits, optional)"];
-    [newPin setValue:@""];
+    [newPin setValue:self.targetPinCode ?: @""];
 
     return @[urlItem, tokenItem, galleryChoice, newTitle, newDate, newPin];
 }
 
 - (BOOL)didUpdateValue:(id)value forSetting:(NSString *)setting action:(COPluginAction *)action settings:(NSDictionary *)settings callbackAction:(NSUInteger *)callback error:(NSError **)error {
+    NSString *strVal = ExtractSettingString(value);
     NSUserDefaults *defs = [NSUserDefaults standardUserDefaults];
-    if ([setting isEqualToString:@"server_url"] && [value isKindOfClass:[NSString class]]) {
-        [defs setObject:value forKey:kPrefServerURL];
+
+    if ([setting isEqualToString:@"server_url"]) {
+        self.serverUrl = strVal;
+        [defs setObject:strVal forKey:kPrefServerURL];
         [defs synchronize];
-    } else if ([setting isEqualToString:@"api_token"] && [value isKindOfClass:[NSString class]]) {
-        [defs setObject:value forKey:kPrefAPIToken];
+        if (callback) *callback = 1; // Request Capture One to reload settings list
+    } else if ([setting isEqualToString:@"api_token"]) {
+        self.apiToken = strVal;
+        [defs setObject:strVal forKey:kPrefAPIToken];
         [defs synchronize];
-    } else if ([setting isEqualToString:@"gallery_choice"] && [value isKindOfClass:[NSString class]]) {
-        [defs setObject:value forKey:kPrefGalleryId];
+        if (callback) *callback = 1; // Request Capture One to reload settings list
+    } else if ([setting isEqualToString:@"gallery_choice"]) {
+        self.galleryChoice = strVal;
+        [defs setObject:strVal forKey:kPrefGalleryId];
+        [defs synchronize];
+    } else if ([setting isEqualToString:@"new_title"]) {
+        self.targetGalleryTitle = strVal;
+        [defs setObject:strVal forKey:kPrefNewTitle];
+        [defs synchronize];
+    } else if ([setting isEqualToString:@"new_date"]) {
+        self.targetShootDate = strVal;
+        [defs setObject:strVal forKey:kPrefNewDate];
+        [defs synchronize];
+    } else if ([setting isEqualToString:@"new_pin"]) {
+        self.targetPinCode = strVal;
+        [defs setObject:strVal forKey:kPrefNewPin];
         [defs synchronize];
     }
+
     return YES;
 }
 
 - (BOOL)validateSettings:(NSDictionary *)settings forAction:(COPluginAction *)action error:(NSError **)error {
+    // Sync latest values from settings dictionary before validation
+    if (settings && [settings isKindOfClass:[NSDictionary class]]) {
+        if (settings[@"server_url"]) self.serverUrl = ExtractSettingString(settings[@"server_url"]);
+        if (settings[@"api_token"]) self.apiToken = ExtractSettingString(settings[@"api_token"]);
+        if (settings[@"gallery_choice"]) self.galleryChoice = ExtractSettingString(settings[@"gallery_choice"]);
+        if (settings[@"new_title"]) self.targetGalleryTitle = ExtractSettingString(settings[@"new_title"]);
+        if (settings[@"new_date"]) self.targetShootDate = ExtractSettingString(settings[@"new_date"]);
+        if (settings[@"new_pin"]) self.targetPinCode = ExtractSettingString(settings[@"new_pin"]);
+    }
+
     NSUserDefaults *defs = [NSUserDefaults standardUserDefaults];
-    NSString *url = settings[@"server_url"] ?: [defs stringForKey:kPrefServerURL];
-    NSString *token = settings[@"api_token"] ?: [defs stringForKey:kPrefAPIToken];
-    NSString *galleryChoice = settings[@"gallery_choice"] ?: [defs stringForKey:kPrefGalleryId];
+    NSString *url = self.serverUrl ?: [defs stringForKey:kPrefServerURL];
+    NSString *token = self.apiToken ?: [defs stringForKey:kPrefAPIToken];
+    NSString *galleryChoice = self.galleryChoice ?: [defs stringForKey:kPrefGalleryId];
 
     if (!url || [url stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]].length == 0) {
         if (error) {
@@ -211,8 +328,8 @@ static NSString *const kPrefGalleryId = @"photogal_target_gallery";
     }
 
     if ([galleryChoice isEqualToString:@"__new__"]) {
-        NSString *newTitle = settings[@"new_title"];
-        NSString *newDate = settings[@"new_date"];
+        NSString *newTitle = self.targetGalleryTitle ?: [defs stringForKey:kPrefNewTitle];
+        NSString *newDate = self.targetShootDate ?: [defs stringForKey:kPrefNewDate];
         if (!newTitle || [newTitle stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]].length == 0) {
             if (error) {
                 *error = [NSError errorWithDomain:@"photogal" code:400 userInfo:@{NSLocalizedDescriptionKey: @"Please enter a New Gallery Title."}];
@@ -227,16 +344,37 @@ static NSString *const kPrefGalleryId = @"photogal_target_gallery";
         }
     }
 
+    // Persist validated settings
+    if (self.serverUrl) [defs setObject:self.serverUrl forKey:kPrefServerURL];
+    if (self.apiToken) [defs setObject:self.apiToken forKey:kPrefAPIToken];
+    if (self.galleryChoice) [defs setObject:self.galleryChoice forKey:kPrefGalleryId];
+    if (self.targetGalleryTitle) [defs setObject:self.targetGalleryTitle forKey:kPrefNewTitle];
+    if (self.targetShootDate) [defs setObject:self.targetShootDate forKey:kPrefNewDate];
+    if (self.targetPinCode) [defs setObject:self.targetPinCode forKey:kPrefNewPin];
+    [defs synchronize];
+
     return YES;
 }
 
 #pragma mark - Publishing Task Execution
 
 - (COPluginActionPublishResult *)startPublishingTask:(COFileHandlingPluginTask *)task error:(NSError **)error progress:(void(^)(COPluginTask *task, uint64_t current, uint64_t total, NSString *message))progressBlock {
+    // 1. Read settings from task, with fallback to instance variables and NSUserDefaults
+    NSDictionary *taskSettings = nil;
+    if ([task respondsToSelector:@selector(settings)]) {
+        taskSettings = [task performSelector:@selector(settings)];
+    }
+
     NSUserDefaults *defs = [NSUserDefaults standardUserDefaults];
-    NSString *serverUrl = [[defs stringForKey:kPrefServerURL] stringByTrimmingCharactersInSet:[NSCharacterSet characterSetWithCharactersInString:@"/ "]];
-    NSString *apiToken = [defs stringForKey:kPrefAPIToken];
-    NSString *galleryChoice = [defs stringForKey:kPrefGalleryId] ?: @"__new__";
+
+    NSString *serverUrl = ExtractSettingString(taskSettings[@"server_url"]) ?: self.serverUrl ?: [defs stringForKey:kPrefServerURL] ?: @"http://localhost:3000";
+    serverUrl = [serverUrl stringByTrimmingCharactersInSet:[NSCharacterSet characterSetWithCharactersInString:@"/ "]];
+
+    NSString *apiToken = ExtractSettingString(taskSettings[@"api_token"]) ?: self.apiToken ?: [defs stringForKey:kPrefAPIToken];
+    NSString *galleryChoice = ExtractSettingString(taskSettings[@"gallery_choice"]) ?: self.galleryChoice ?: [defs stringForKey:kPrefGalleryId] ?: @"__new__";
+    NSString *newTitle = ExtractSettingString(taskSettings[@"new_title"]) ?: self.targetGalleryTitle ?: [defs stringForKey:kPrefNewTitle];
+    NSString *newDate = ExtractSettingString(taskSettings[@"new_date"]) ?: self.targetShootDate ?: [defs stringForKey:kPrefNewDate];
+    NSString *newPin = ExtractSettingString(taskSettings[@"new_pin"]) ?: self.targetPinCode ?: [defs stringForKey:kPrefNewPin];
 
     NSArray<NSString *> *files = [task files];
     if (!files || files.count == 0) {
@@ -246,20 +384,24 @@ static NSString *const kPrefGalleryId = @"photogal_target_gallery";
         return nil;
     }
 
-    // Determine target gallery ID
+    // 2. Determine target gallery ID
     NSString *targetGalleryId = galleryChoice;
     if ([targetGalleryId isEqualToString:@"__new__"]) {
-        NSString *newTitle = [defs stringForKey:@"photogal_new_title"] ?: @"Capture One Export";
-        NSString *newDate = [defs stringForKey:@"photogal_new_date"] ?: @"2026-01-01";
-        NSString *newPin = [defs stringForKey:@"photogal_new_pin"] ?: @"";
+        NSString *titleToUse = (newTitle && [newTitle stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]].length > 0)
+            ? [newTitle stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]]
+            : [NSString stringWithFormat:@"Capture One Export %@", [NSDateFormatter localizedStringFromDate:[NSDate date] dateStyle:NSDateFormatterShortStyle timeStyle:NSDateFormatterShortStyle]];
 
-        targetGalleryId = [self createGalleryOnURL:serverUrl token:apiToken title:newTitle shootDate:newDate pinCode:newPin error:error];
+        NSDateFormatter *df = [[NSDateFormatter alloc] init];
+        df.dateFormat = @"yyyy-MM-dd";
+        NSString *dateToUse = (newDate && newDate.length >= 10) ? newDate : [df stringFromDate:[NSDate date]];
+
+        targetGalleryId = [self createGalleryOnURL:serverUrl token:apiToken title:titleToUse shootDate:dateToUse pinCode:newPin error:error];
         if (!targetGalleryId) {
             return nil;
         }
     }
 
-    // Upload files batch by batch
+    // 3. Upload files batch by batch
     const NSUInteger batchSize = 10;
     NSUInteger totalFiles = files.count;
     NSUInteger uploadedCount = 0;
@@ -284,10 +426,13 @@ static NSString *const kPrefGalleryId = @"photogal_target_gallery";
         progressBlock(task, totalFiles, totalFiles, @"Upload complete!");
     }
 
-    NSURL *galleryWebURL = [NSURL URLWithString:[NSString stringWithFormat:@"%@/admin/galleries/%@", serverUrl, targetGalleryId]];
+    NSString *galleryWebURLString = [NSString stringWithFormat:@"%@/admin/galleries/%@", serverUrl, targetGalleryId];
     NSString *msg = [NSString stringWithFormat:@"Successfully uploaded %lu photos to photogal!", (unsigned long)totalFiles];
 
-    return [[COPluginActionPublishResult alloc] initWithURL:galleryWebURL message:msg];
+    // NOTE: Capture One expects an NSString for the URL parameter, calling [URL length].
+    // Passing an NSURL causes unrecognized selector [NSURL length] and crashes Capture One!
+    COPluginActionPublishResult *result = [[COPluginActionPublishResult alloc] initWithURL:(id)galleryWebURLString message:msg];
+    return result;
 }
 
 #pragma mark - Open With Task Execution
@@ -431,4 +576,3 @@ static NSString *const kPrefGalleryId = @"photogal_target_gallery";
 }
 
 @end
-
