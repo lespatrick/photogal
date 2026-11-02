@@ -4,19 +4,14 @@
 # ==============================================================================
 set -euo pipefail
 
-# 1. Reconnect stdin to interactive terminal if piped via `curl ... | bash`
-if [ ! -t 0 ] && [ -e /dev/tty ]; then
-    exec < /dev/tty
-fi
-
-# 2. Verify Proxmox VE environment
+# 1. Verify Proxmox VE environment
 if ! command -v pct >/dev/null 2>&1; then
     echo -e "\033[0;31mError:\033[0m This script must be run directly on a Proxmox VE node host (pct command not found)." >&2
     exit 1
 fi
 
-# Detect whether whiptail is available and running on an interactive terminal
-if command -v whiptail >/dev/null 2>&1 && [ -t 0 ]; then
+# Detect whether whiptail is available and a controlling terminal exists
+if command -v whiptail >/dev/null 2>&1 && [ -c /dev/tty ]; then
     USE_WHIPTAIL="true"
 else
     USE_WHIPTAIL="false"
@@ -29,13 +24,17 @@ input_box() {
     local default="${3:-}"
     local result=""
     if [ "$USE_WHIPTAIL" = "true" ]; then
-        result=$(whiptail --title "$title" --backtitle "photogal — Proxmox VE Setup Wizard" --inputbox "$text" 12 72 "$default" 3>&1 1>&2 2>&3) || {
+        result=$(whiptail --title "$title" --backtitle "photogal — Proxmox VE Setup Wizard" --inputbox "$text" 12 72 "$default" 3>&1 1>&2 2>&3 < /dev/tty) || {
             echo "Installation cancelled." >&2
             exit 0
         }
     else
         echo -e "\n\033[1;34m[${title}]\033[0m $text"
-        read -r -p "Value [${default}]: " result || exit 0
+        if [ -c /dev/tty ]; then
+            read -r -p "Value [${default}]: " result < /dev/tty || exit 0
+        else
+            read -r -p "Value [${default}]: " result || exit 0
+        fi
         result="${result:-$default}"
     fi
     echo "$result"
@@ -45,14 +44,19 @@ yesno_box() {
     local title="$1"
     local text="$2"
     if [ "$USE_WHIPTAIL" = "true" ]; then
-        if whiptail --title "$title" --backtitle "photogal — Proxmox VE Setup Wizard" --yesno "$text" 17 74 3>&1 1>&2 2>&3; then
+        if whiptail --title "$title" --backtitle "photogal — Proxmox VE Setup Wizard" --yesno "$text" 17 74 3>&1 1>&2 2>&3 < /dev/tty; then
             return 0
         else
             return 1
         fi
     else
         echo -e "\n\033[1;34m[${title}]\033[0m\n$text"
-        read -r -p "Proceed? (Y/n): " ans || return 1
+        local ans=""
+        if [ -c /dev/tty ]; then
+            read -r -p "Proceed? (Y/n): " ans < /dev/tty || return 1
+        else
+            read -r -p "Proceed? (Y/n): " ans || return 1
+        fi
         case "$ans" in
             [nN][oO]|[nN]) return 1 ;;
             *) return 0 ;;
@@ -66,7 +70,7 @@ menu_box() {
     local result=""
     shift 2
     if [ "$USE_WHIPTAIL" = "true" ]; then
-        result=$(whiptail --title "$title" --backtitle "photogal — Proxmox VE Setup Wizard" --menu "$text" 14 74 2 "$@" 3>&1 1>&2 2>&3) || {
+        result=$(whiptail --title "$title" --backtitle "photogal — Proxmox VE Setup Wizard" --menu "$text" 14 74 2 "$@" 3>&1 1>&2 2>&3 < /dev/tty) || {
             echo "Installation cancelled." >&2
             exit 0
         }
@@ -78,7 +82,11 @@ menu_box() {
             keys+=("$1")
             shift 2
         done
-        read -r -p "Enter choice [${keys[0]}]: " result || exit 0
+        if [ -c /dev/tty ]; then
+            read -r -p "Enter choice [${keys[0]}]: " result < /dev/tty || exit 0
+        else
+            read -r -p "Enter choice [${keys[0]}]: " result || exit 0
+        fi
         result="${result:-${keys[0]}}"
     fi
     echo "$result"

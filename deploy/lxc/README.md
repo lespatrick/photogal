@@ -9,7 +9,7 @@ Katalog zawiera kompletne skrypty i konfiguracje do uruchomienia platformy **pho
 Uruchom poniższe polecenie w terminalu węzła Proxmox VE:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/lespatrick/photogal/main/deploy/lxc/proxmox-lxc.sh | bash
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/lespatrick/photogal/main/deploy/lxc/proxmox-lxc.sh)"
 ```
 
 Uruchomi się **interaktywny kreator (formularz TUI)** w stylu Proxmox Helper-Scripts:
