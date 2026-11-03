@@ -152,6 +152,19 @@ cp -a /opt/photogal/backups/backup-<TIMESTAMP>/data/. /opt/photogal/data/
 systemctl start photogal
 ```
 
+### 🔍 Diagnostyka bazy danych (Liczba galerii, zdjęć, spójność)
+Aby w dowolnym momencie sprawdzić stan bazy, liczbę zarejestrowanych galerii, zdjęć i wyborów klientów:
+```bash
+# Szybka inspekcja domyślnej bazy danych
+node /opt/photogal/scripts/check-db.js
+
+# Inspekcja konkretnego pliku (np. z kopii zapasowej)
+node /opt/photogal/scripts/check-db.js /opt/photogal/backups/backup-<TIMESTAMP>/data/photogal.db
+
+# Format JSON dla skryptów monitoringu
+node /opt/photogal/scripts/check-db.js --json
+```
+
 ### 🚑 Narzędzie ratunkowe: Odzyskiwanie galerii z dysku (Storage Scanner)
 Jeśli po wcześniejszych wersjach skryptu baza uległa wyzerowaniu, ale zdjęcia fizycznie znajdują się w `/opt/photogal/storage/galleries/`:
 ```bash
