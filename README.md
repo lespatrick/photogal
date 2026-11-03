@@ -70,6 +70,11 @@ Aplikacja powstała jako niezależna, self-hosted alternatywa dla komercyjnych s
 * **Finalizacja i zablokowanie**:
   * Podsumowanie wyboru z polem na dodatkowe uwagi od klienta.
   * Automatyczne oznaczenie sesji jako zrealizowanej i zablokowanie dalszych modyfikacji.
+* **Zabezpieczenie przed zrzutami ekranu (Proofing Honeypot)**:
+  * Wczesne przechwytywanie skrótów klawiszowych przechwytywania ekranu (`PrintScreen`, Mac `Cmd+Shift+3/4/5/6`, narzędzia wycinania `Win+Shift+S` oraz `Ctrl+Shift+S`).
+  * Detekcja utraty fokusu okna (`window.onblur`) — natychmiastowe zabezpieczenie kadrów w momencie uruchomienia zewnętrznych aplikacji do zrzutów ekranu (np. Narzędzie Wycinanie, CleanShot X, Greenshot, ShareX).
+  * **Image Spoofing (Fakowanie obrazu)**: W chwili próby przechwycenia oryginalne fotografie w siatce i Lightboxie są błyskawicznie zamazywane i zastępowane redakcyjną tarczą weryfikacyjną (*Studio Proofing Shield*) z gęstym, skośnym wzorem znaku wodnego SVG oraz stemplem sesji.
+  * Ochrona przed drukowaniem i eksportem do PDF (`@media print`) — automatyczne ukrywanie zdjęć z zastąpieniem ich certyfikatem praw autorskich fotografa.
 * **PWA & Offline cache**: Możliwość zainstalowania jako aplikacja na ekranie głównym telefonu lub komputera (Service Worker + Web App Manifest).
 
 ---
@@ -125,6 +130,8 @@ System został zabezpieczony przed typowymi wektorami ataków na galerie prywatn
 | **Soft IP Lockout** | Po 5 nieudanych próbach adres IP klienta jest blokowany na 15 minut (`HTTP 429 Too Many Requests`). |
 | **Hard Gallery Lock** | Po 10 łącznych niepowodzeniach cała galeria przechodzi w stan blokady awaryjnej, wymagającej 1 kliknięcia fotografa w panelu admina. |
 | **Privacy IP Hashing** | Adresy IP w bazie są natychmiast haszowane solonym `SHA-256` w celu pełnej zgodności z RODO/GDPR. |
+| **Screenshot Trap & Honeypot** | Wykrywanie skrótów klawiszowych przechwytywania ekranu oraz utraty fokusu okna natychmiast fukuje i degraduje zdjęcia, podmieniając je na certyfikat ze znakiem wodnym (*Studio Proofing Shield*). |
+| **Print & PDF Defense** | Reguły arkusza `@media print` uniemożliwiające wydruk lub zapis kadrów do plików PDF. |
 | **Bezpieczne Sesje Admina** | Ciasteczka `HttpOnly`, `SameSite=Lax` podpisane HMAC-SHA256 z kluczem `AUTH_SECRET`. |
 
 ---
@@ -235,7 +242,8 @@ photogal/
 │   │   ├── g/[slug]/          # Widok klienta (PIN, Masonry, Lightbox)
 │   │   ├── globals.css        # Kompletny minimalistyczny system stylów Vanilla CSS
 │   │   └── layout.tsx         # Główny layout z motywami i PWA
-│   ├── components/            # Komponenty UI (ThemeToggle, ToastProvider)
+│   ├── components/            # Komponenty UI (ThemeToggle, ToastProvider, ProofingShield)
+│   ├── hooks/                 # Hooki React (useScreenshotTrap)
 │   └── lib/                   # Logika biznesowa (db.ts, auth.ts, storage.ts, webauthn.ts)
 ├── Dockerfile                 # Produkcyjny obraz Docker
 ├── docker-compose.yml         # Konfiguracja Compose

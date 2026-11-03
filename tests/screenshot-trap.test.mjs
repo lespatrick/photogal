@@ -92,3 +92,4 @@ describe('Screenshot Trap & Proofing Honeypot Test Suite', () => {
     assert.ok(pageFile.includes('trap-active'), 'Must toggle trap-active class');
   });
 });
+

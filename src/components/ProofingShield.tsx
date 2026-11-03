@@ -81,3 +81,4 @@ export function PrintProofingNotice({ galleryTitle, slug }: ProofingDecoyLightbo
     </div>
   );
 }
+

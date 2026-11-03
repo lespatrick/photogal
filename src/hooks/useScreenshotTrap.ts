@@ -129,3 +129,4 @@ export function useScreenshotTrap(options: UseScreenshotTrapOptions = {}) {
 
   return { isTrapActive, triggerReason };
 }
+
