@@ -1,5 +1,5 @@
 // Service Worker for photogal PWA
-const CACHE_NAME = 'photogal-cache-v1';
+const CACHE_NAME = 'photogal-cache-v2';
 const MEDIA_CACHE_NAME = 'photogal-media-v1';
 const ASSETS_TO_CACHE = [
   '/',

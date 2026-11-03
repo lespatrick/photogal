@@ -3,6 +3,8 @@ import './globals.css';
 import { ThemeProvider } from '@/components/ThemeProvider';
 import { ToastProvider } from '@/components/ToastProvider';
 
+export const dynamic = 'force-dynamic';
+
 export const metadata: Metadata = {
   title: 'photogal | Selekcja i Galerie Zdjęć',
   description: 'Autorska, minimalistyczna platforma do udostępniania galerii zdjęć i selekcji ujęć — photogal',

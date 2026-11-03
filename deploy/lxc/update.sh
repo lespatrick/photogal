@@ -196,6 +196,10 @@ fast_update() {
     # Ensure persistent directories exist before sync
     mkdir -p "$INSTALL_DIR/data" "$INSTALL_DIR/storage"
 
+    # Purge stale Next.js cache and server build artifacts before sync to prevent stale ISR hits
+    echo -e "${BLUE}==>${NC} Clearing stale Next.js server cache..."
+    rm -rf "$INSTALL_DIR/.next/cache" "$INSTALL_DIR/.next/server"
+
     # Sync extracted files into INSTALL_DIR, preserving existing data, storage, and .env
     cp -a "$tmp_dir/extracted/." "$INSTALL_DIR/"
 
@@ -271,6 +275,7 @@ source_update() {
 
     # 5. Build Next.js application
     echo -e "${BLUE}==>${NC} Building production bundle..."
+    rm -rf "$INSTALL_DIR/.next/cache" "$INSTALL_DIR/.next/server"
     NODE_OPTIONS="--max-old-space-size=2048" npm run build
 
     # 6. Synchronize standalone assets
