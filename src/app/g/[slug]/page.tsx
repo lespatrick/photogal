@@ -6,6 +6,12 @@ import {
 } from 'lucide-react';
 import { ThemeToggle } from '@/components/ThemeProvider';
 import { useToast } from '@/components/ToastProvider';
+import { useScreenshotTrap } from '@/hooks/useScreenshotTrap';
+import {
+  ProofingDecoyLightbox,
+  ProofingDecoyGrid,
+  PrintProofingNotice,
+} from '@/components/ProofingShield';
 
 interface PhotoItem {
   id: string;
@@ -74,6 +80,16 @@ export default function ClientGalleryPage({
   // Touch swipe support for Lightbox
   const touchStartX = useRef<number | null>(null);
   const touchEndX = useRef<number | null>(null);
+
+  // Studio Proofing Trap for screenshot detection & image spoofing
+  const { isTrapActive } = useScreenshotTrap({
+    enabled: unlocked,
+    onTrigger: (reason) => {
+      if (reason === 'keyboard' || reason === 'print') {
+        toast('Zabezpieczenie studia: Zrzuty ekranu są zablokowane w trybie weryfikacji', 'info');
+      }
+    },
+  });
 
   const getClientToken = useCallback(() => {
     if (typeof window === 'undefined') return null;
@@ -428,7 +444,9 @@ export default function ClientGalleryPage({
     : null;
 
   return (
-    <div className="app-container" style={{ paddingBottom: '7rem' }}>
+    <div className={`app-container client-gallery-page ${isTrapActive ? 'trap-active' : ''}`} style={{ paddingBottom: '7rem' }}>
+      <PrintProofingNotice galleryTitle={gallery?.title} slug={slug} />
+
       {/* Editorial Minimal Navbar */}
       <header className="navbar">
         <div className="brand">
@@ -556,6 +574,8 @@ export default function ClientGalleryPage({
                     draggable={false}
                     onDragStart={(e) => e.preventDefault()}
                   />
+
+                  {isTrapActive && <ProofingDecoyGrid slug={slug} />}
 
                   {/* Minimalist Overlay */}
                   <div className="photo-overlay">
@@ -757,6 +777,12 @@ export default function ClientGalleryPage({
                 draggable={false}
                 onDragStart={(e) => e.preventDefault()}
               />
+              {isTrapActive && (
+                <ProofingDecoyLightbox
+                  galleryTitle={gallery?.title}
+                  slug={slug}
+                />
+              )}
               <div
                 className="lightbox-image-shield"
                 onContextMenu={(e) => e.preventDefault()}
