@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { ThemeToggle } from '@/components/ThemeProvider';
 import { useToast } from '@/components/ToastProvider';
+import { AdminNavbar } from '@/components/AdminNavbar';
 
 interface PhotoItem {
   id: string;
@@ -338,25 +339,12 @@ export default function GalleryManagementPage({
   return (
     <div className="app-container">
       {/* Top Navbar */}
-      <header className="navbar">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', minWidth: 0 }}>
-          <Link href="/admin" className="btn btn-ghost btn-icon" title="Powrót do listy sesji">
-            <ArrowLeft size={16} />
-          </Link>
-          <div className="brand">
-            <span>{gallery.title}</span>
-          </div>
-        </div>
-
-        <div className="nav-actions">
-          <ThemeToggle />
-          <button
-            onClick={() => setSettingsOpen(true)}
-            className="btn btn-secondary btn-icon"
-            title="Ustawienia sesji"
-          >
-            <Settings size={15} />
-          </button>
+      <AdminNavbar
+        title={gallery.title}
+        backHref="/admin"
+        onOpenSettings={() => setSettingsOpen(true)}
+        settingsTitle="Ustawienia sesji"
+        extraActions={
           <Link
             href={`/g/${gallery.slug}`}
             target="_blank"
@@ -366,8 +354,8 @@ export default function GalleryManagementPage({
             <ExternalLink size={14} />
             <span className="nav-btn-text">Podgląd</span>
           </Link>
-        </div>
-      </header>
+        }
+      />
 
       {/* Main Content */}
       <main className="main-content admin-main" style={{ maxWidth: '1600px', margin: '0 auto' }}>

@@ -11,6 +11,7 @@ import {
 import { startRegistration } from '@simplewebauthn/browser';
 import { ThemeToggle } from '@/components/ThemeProvider';
 import { useToast } from '@/components/ToastProvider';
+import { AdminNavbar } from '@/components/AdminNavbar';
 
 interface GalleryItem {
   id: string;
@@ -351,31 +352,12 @@ export default function AdminDashboardPage() {
   return (
     <div className="app-container">
       {/* Navigation */}
-      <header className="navbar">
-        <div className="brand">
-          <span>photogal</span>
-        </div>
-
-        <div className="nav-actions">
-          <button
-            onClick={() => handleOpenSecurity('password')}
-            className="btn btn-secondary nav-btn-responsive"
-            title="Ustawienia studia: hasło, Passkeys, Capture One & API"
-          >
-            <Settings size={15} />
-            <span className="nav-btn-text">Ustawienia</span>
-          </button>
-          <ThemeToggle />
-          <button
-            onClick={handleLogout}
-            className="btn btn-ghost nav-btn-responsive"
-            title="Wyloguj z panelu fotografa"
-          >
-            <LogOut size={15} />
-            <span className="nav-btn-text">Wyloguj</span>
-          </button>
-        </div>
-      </header>
+      <AdminNavbar
+        title="photogal"
+        onOpenSettings={() => handleOpenSecurity('password')}
+        settingsTitle="Ustawienia studia: hasło, Passkeys, Capture One & API"
+        onLogout={handleLogout}
+      />
 
       {/* Main Content */}
       <main className="main-content admin-main" style={{ maxWidth: '1400px', margin: '0 auto' }}>
