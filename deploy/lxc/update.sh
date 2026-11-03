@@ -44,19 +44,55 @@ echo -e "${BLUE}==>${NC} Updating photogal..."
 ARCH=$(uname -m)
 
 # ------------------------------------------------------------------------------
+# RESCUE & MIGRATE: Rescue any database or photos saved in .next/standalone
+# ------------------------------------------------------------------------------
+rescue_standalone_data() {
+    # Check if .next/standalone/data has a database that is NOT a symlink
+    if [ -f "$INSTALL_DIR/.next/standalone/data/photogal.db" ] && [ ! -L "$INSTALL_DIR/.next/standalone/data/photogal.db" ]; then
+        local standalone_size root_size
+        standalone_size=$(stat -c%s "$INSTALL_DIR/.next/standalone/data/photogal.db" 2>/dev/null || stat -f%z "$INSTALL_DIR/.next/standalone/data/photogal.db" 2>/dev/null || echo 0)
+        root_size=0
+        if [ -f "$INSTALL_DIR/data/photogal.db" ] && [ ! -L "$INSTALL_DIR/data/photogal.db" ]; then
+            root_size=$(stat -c%s "$INSTALL_DIR/data/photogal.db" 2>/dev/null || stat -f%z "$INSTALL_DIR/data/photogal.db" 2>/dev/null || echo 0)
+        fi
+
+        # If root database is missing, empty, or standalone has a larger database
+        if [ "$root_size" -lt 10000 ] || [ "$standalone_size" -gt "$root_size" ]; then
+            echo -e "${YELLOW}==>${NC} Rescuing database from legacy .next/standalone location to $INSTALL_DIR/data/..."
+            mkdir -p "$INSTALL_DIR/data"
+            cp -a "$INSTALL_DIR/.next/standalone/data/." "$INSTALL_DIR/data/"
+        fi
+    fi
+
+    # Check if .next/standalone/storage/galleries has folders and is NOT a symlink
+    if [ -d "$INSTALL_DIR/.next/standalone/storage/galleries" ] && [ ! -L "$INSTALL_DIR/.next/standalone/storage/galleries" ]; then
+        echo -e "${YELLOW}==>${NC} Rescuing photo galleries from legacy .next/standalone location..."
+        mkdir -p "$INSTALL_DIR/storage/galleries"
+        cp -an "$INSTALL_DIR/.next/standalone/storage/galleries/." "$INSTALL_DIR/storage/galleries/" 2>/dev/null || \
+        cp -a "$INSTALL_DIR/.next/standalone/storage/galleries/." "$INSTALL_DIR/storage/galleries/" 2>/dev/null || true
+    fi
+}
+
+# ------------------------------------------------------------------------------
 # SAFETY: Automated Snapshot / Backup of Database & Configuration
 # ------------------------------------------------------------------------------
 backup_user_data() {
+    # First rescue any files if they were in the legacy standalone path
+    rescue_standalone_data
+
     local backup_root="$INSTALL_DIR/backups"
     local timestamp
     timestamp=$(date +"%Y%m%d_%H%M%S")
     local backup_dest="$backup_root/backup-$timestamp"
 
-    if [ -d "$INSTALL_DIR/data" ] || [ -f "$INSTALL_DIR/.env" ]; then
+    if [ -d "$INSTALL_DIR/data" ] || [ -f "$INSTALL_DIR/.env" ] || [ -d "$INSTALL_DIR/.next/standalone/data" ]; then
         echo -e "${BLUE}==>${NC} Creating automated pre-update backup at $backup_dest..."
         mkdir -p "$backup_dest"
         if [ -d "$INSTALL_DIR/data" ]; then
             cp -a "$INSTALL_DIR/data" "$backup_dest/" 2>/dev/null || true
+        fi
+        if [ -d "$INSTALL_DIR/.next/standalone/data" ] && [ ! -L "$INSTALL_DIR/.next/standalone/data" ]; then
+            cp -a "$INSTALL_DIR/.next/standalone/data" "$backup_dest/standalone-data" 2>/dev/null || true
         fi
         if [ -f "$INSTALL_DIR/.env" ]; then
             cp -a "$INSTALL_DIR/.env" "$backup_dest/" 2>/dev/null || true

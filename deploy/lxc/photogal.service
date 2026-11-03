@@ -12,6 +12,8 @@ Environment=NODE_ENV=production
 Environment=PORT=3000
 Environment=HOSTNAME=0.0.0.0
 Environment=NEXT_TELEMETRY_DISABLED=1
+Environment=DATA_DIR=/opt/photogal/data
+Environment=STORAGE_DIR=/opt/photogal/storage
 
 ExecStart=/opt/photogal/deploy/lxc/start.sh
 Restart=always

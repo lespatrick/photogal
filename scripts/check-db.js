@@ -27,6 +27,8 @@ const defaultPaths = [
   process.env.DATA_DIR ? path.join(process.env.DATA_DIR, 'photogal.db') : null,
   '/opt/photogal/data/photogal.db',
   path.resolve(process.cwd(), 'data/photogal.db'),
+  '/opt/photogal/.next/standalone/data/photogal.db',
+  path.resolve(process.cwd(), '.next/standalone/data/photogal.db'),
   path.resolve(process.cwd(), 'photogal.db')
 ].filter(Boolean);
 
@@ -176,8 +178,33 @@ console.log('============================================================\n');
 
 if (totalGalleries === 0) {
   console.log('ℹ️  No galleries found in this database.');
-  console.log('   If your photos are on disk, you can recover them with:');
-  console.log('   node scripts/recover-galleries.js --execute\n');
+
+  // Check if galleries are in legacy standalone location
+  const potentialStandalonePaths = [
+    '/opt/photogal/.next/standalone/data/photogal.db',
+    path.resolve(process.cwd(), '.next/standalone/data/photogal.db'),
+  ].filter(p => p !== dbPath && fs.existsSync(p));
+
+  let foundLegacy = false;
+  for (const altPath of potentialStandalonePaths) {
+    try {
+      const altDb = new Database(altPath, { readonly: true, fileMustExist: true });
+      const altCount = altDb.prepare('SELECT COUNT(*) as c FROM galleries').get()?.c || 0;
+      if (altCount > 0) {
+        console.log(`\n🚨 FOUND ${altCount} GALLERY/GALLERIES IN ALTERNATIVE LOCATION:`);
+        console.log(`   Path: ${altPath}`);
+        console.log(`   To inspect: node scripts/check-db.js "${altPath}"`);
+        console.log(`   To restore: cp -a "${altPath}" "${dbPath}" && systemctl restart photogal\n`);
+        foundLegacy = true;
+      }
+      altDb.close();
+    } catch {}
+  }
+
+  if (!foundLegacy) {
+    console.log('   If your photos are on disk, you can recover them with:');
+    console.log('   node scripts/recover-galleries.js --execute\n');
+  }
 } else {
   console.log('GALERIE W BAZIE DANYCH:');
   console.log('─'.repeat(80));
@@ -204,3 +231,4 @@ if (totalGalleries === 0) {
   console.log('─'.repeat(80));
   console.log();
 }
+

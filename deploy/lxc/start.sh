@@ -2,6 +2,10 @@
 set -e
 cd /opt/photogal
 
+# Guarantee persistent directories regardless of whether running root or nested standalone
+export DATA_DIR="${DATA_DIR:-/opt/photogal/data}"
+export STORAGE_DIR="${STORAGE_DIR:-/opt/photogal/storage}"
+
 # 1. Check for root standalone server (recommended layout)
 if [ -f "server.js" ]; then
     exec /usr/bin/node server.js

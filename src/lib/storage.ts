@@ -1,15 +1,52 @@
 import path from 'path';
 import fs from 'fs';
 
-export const STORAGE_DIR = process.env.STORAGE_DIR
-  ? path.resolve(process.env.STORAGE_DIR)
-  : path.resolve(process.cwd(), 'storage');
+function resolveStorageDir(): string {
+  if (process.env.STORAGE_DIR) {
+    return path.resolve(process.env.STORAGE_DIR);
+  }
+  const cwd = process.cwd();
+  // If running inside .next/standalone due to process.chdir(__dirname), find the true project root
+  const standaloneMarker = path.sep + '.next' + path.sep + 'standalone';
+  const idx = cwd.indexOf(standaloneMarker);
+  const trueRoot = idx !== -1 ? cwd.substring(0, idx) : cwd;
+  return path.resolve(trueRoot, 'storage');
+}
+
+export const STORAGE_DIR = resolveStorageDir();
 
 if (!fs.existsSync(/*turbopackIgnore: true*/ STORAGE_DIR)) {
   try {
     fs.mkdirSync(STORAGE_DIR, { recursive: true });
   } catch {}
 }
+
+// Automatic rescue migration: Check if photos were saved in .next/standalone/storage/galleries
+try {
+  const cwd = process.cwd();
+  const standaloneMarker = path.sep + '.next' + path.sep + 'standalone';
+  const idx = cwd.indexOf(standaloneMarker);
+  const trueRoot = idx !== -1 ? cwd.substring(0, idx) : cwd;
+  const legacyGalleries = path.resolve(trueRoot, '.next', 'standalone', 'storage', 'galleries');
+  const targetGalleries = path.resolve(STORAGE_DIR, 'galleries');
+
+  if (fs.existsSync(legacyGalleries) && legacyGalleries !== targetGalleries) {
+    const isSymlink = fs.lstatSync(legacyGalleries).isSymbolicLink();
+    if (!isSymlink) {
+      fs.mkdirSync(targetGalleries, { recursive: true });
+      const entries = fs.readdirSync(legacyGalleries, { withFileTypes: true });
+      for (const entry of entries) {
+        if (entry.isDirectory()) {
+          const dest = path.resolve(targetGalleries, entry.name);
+          if (!fs.existsSync(dest)) {
+            fs.cpSync(path.resolve(legacyGalleries, entry.name), dest, { recursive: true });
+            console.log(`[STORAGE MIGRATION] Migrated gallery ${entry.name} from standalone to root storage.`);
+          }
+        }
+      }
+    }
+  }
+} catch {}
 
 export function getSafeGalleryBase(galleryId: string): string | null {
   if (!galleryId || typeof galleryId !== 'string') return null;

@@ -80,6 +80,32 @@ const existingSlugs = new Set(
   db.prepare('SELECT slug FROM galleries').all().map(g => g.slug)
 );
 
+// Check if galleries exist in legacy standalone storage
+const standaloneGalleries = path.resolve(STORAGE_DIR, '..', '.next', 'standalone', 'storage', 'galleries');
+if (fs.existsSync(standaloneGalleries) && standaloneGalleries !== galleriesRoot) {
+  try {
+    const standaloneFolders = fs.readdirSync(standaloneGalleries, { withFileTypes: true })
+      .filter(d => d.isDirectory())
+      .map(d => d.name);
+
+    if (standaloneFolders.length > 0) {
+      console.log(`📦 Found ${standaloneFolders.length} gallery folder(s) in legacy .next/standalone storage.`);
+      for (const folder of standaloneFolders) {
+        const dest = path.join(galleriesRoot, folder);
+        if (!fs.existsSync(dest)) {
+          if (!isDryRun) {
+            fs.cpSync(path.join(standaloneGalleries, folder), dest, { recursive: true });
+            console.log(`   Migrated [${folder}] from standalone to root storage.`);
+          } else {
+            console.log(`   [DRY-RUN] Would migrate [${folder}] from standalone to root storage.`);
+          }
+        }
+      }
+      console.log();
+    }
+  } catch {}
+}
+
 const galleryFolders = fs.readdirSync(galleriesRoot, { withFileTypes: true })
   .filter(d => d.isDirectory())
   .map(d => d.name);

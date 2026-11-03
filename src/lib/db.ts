@@ -3,9 +3,19 @@ import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
 
-const DATA_DIR = process.env.DATA_DIR
-  ? path.resolve(process.env.DATA_DIR)
-  : path.resolve(process.cwd(), 'data');
+function resolveDataDir(): string {
+  if (process.env.DATA_DIR) {
+    return path.resolve(process.env.DATA_DIR);
+  }
+  const cwd = process.cwd();
+  // If running inside .next/standalone due to process.chdir(__dirname), find the true project root
+  const standaloneMarker = path.sep + '.next' + path.sep + 'standalone';
+  const idx = cwd.indexOf(standaloneMarker);
+  const trueRoot = idx !== -1 ? cwd.substring(0, idx) : cwd;
+  return path.resolve(trueRoot, 'data');
+}
+
+const DATA_DIR = resolveDataDir();
 
 if (!fs.existsSync(/*turbopackIgnore: true*/ DATA_DIR)) {
   try {
@@ -16,6 +26,32 @@ if (!fs.existsSync(/*turbopackIgnore: true*/ DATA_DIR)) {
 const DB_PATH = process.env.DATABASE_PATH
   ? path.resolve(process.env.DATABASE_PATH)
   : path.resolve(DATA_DIR, 'photogal.db');
+
+// Automatic rescue migration: Check if a database was left behind in .next/standalone/data/photogal.db
+try {
+  const cwd = process.cwd();
+  const standaloneMarker = path.sep + '.next' + path.sep + 'standalone';
+  const idx = cwd.indexOf(standaloneMarker);
+  const trueRoot = idx !== -1 ? cwd.substring(0, idx) : cwd;
+  const legacyDbPath = path.resolve(trueRoot, '.next', 'standalone', 'data', 'photogal.db');
+
+  if (fs.existsSync(legacyDbPath) && legacyDbPath !== DB_PATH) {
+    const isSymlink = fs.lstatSync(legacyDbPath).isSymbolicLink();
+    if (!isSymlink) {
+      const targetExists = fs.existsSync(DB_PATH);
+      const targetSize = targetExists ? fs.statSync(DB_PATH).size : 0;
+      const legacySize = fs.statSync(legacyDbPath).size;
+
+      if (!targetExists || targetSize < 10000 || legacySize > targetSize) {
+        fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
+        fs.copyFileSync(legacyDbPath, DB_PATH);
+        if (fs.existsSync(legacyDbPath + '-wal')) fs.copyFileSync(legacyDbPath + '-wal', DB_PATH + '-wal');
+        if (fs.existsSync(legacyDbPath + '-shm')) fs.copyFileSync(legacyDbPath + '-shm', DB_PATH + '-shm');
+        console.log(`[STORAGE MIGRATION] Migrated database from standalone: ${legacyDbPath} -> ${DB_PATH}`);
+      }
+    }
+  }
+} catch {}
 
 const db: Database.Database = new Database(DB_PATH);
 
