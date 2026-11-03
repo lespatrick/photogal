@@ -8,6 +8,20 @@ on:
       - 'v*.*.*'
       - 'v*'
   workflow_dispatch:
+    inputs:
+      custom_version:
+        description: 'Specific version tag to release (e.g. v0.3.0). If empty, automatically bumps version.'
+        required: false
+        default: ''
+      bump_type:
+        description: 'Version bump type if auto-bumping (patch, minor, major)'
+        required: false
+        default: 'patch'
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
 
 jobs:
   build:
@@ -84,43 +98,154 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - name: Download build artifacts
         uses: actions/download-artifact@v4
         with:
           name: photogal-standalone-linux-x64
 
-      - name: Update latest tag on main branch
-        if: github.ref_name == 'main'
+      - name: Determine and Tag Next Release Version
+        id: versioning
         uses: actions/github-script@v7
         with:
           script: |
-            const ref = 'tags/latest';
+            function parseSemver(str) {
+              const match = str.replace(/^v/, '').match(/^(\d+)\.(\d+)(?:\.(\d+))?$/);
+              if (!match) return null;
+              return {
+                major: parseInt(match[1], 10),
+                minor: parseInt(match[2], 10),
+                patch: parseInt(match[3] || '0', 10),
+                raw: str
+              };
+            }
+
+            function compareSemver(a, b) {
+              if (a.major !== b.major) return a.major - b.major;
+              if (a.minor !== b.minor) return a.minor - b.minor;
+              return a.patch - b.patch;
+            }
+
+            function getNextVersion(existingTags, pkgVersion, bumpType) {
+              const existingSemvers = existingTags.map(parseSemver).filter(Boolean);
+              existingSemvers.sort(compareSemver);
+              const highestTag = existingSemvers.length > 0 ? existingSemvers[existingSemvers.length - 1] : null;
+              const parsedPkg = parseSemver(pkgVersion);
+
+              if (!highestTag) {
+                return parsedPkg ? `v${parsedPkg.major}.${parsedPkg.minor}.${parsedPkg.patch}` : 'v0.1.0';
+              }
+
+              if (parsedPkg && compareSemver(parsedPkg, highestTag) > 0) {
+                return `v${parsedPkg.major}.${parsedPkg.minor}.${parsedPkg.patch}`;
+              }
+
+              if (bumpType === 'major') {
+                return `v${highestTag.major + 1}.0.0`;
+              } else if (bumpType === 'minor') {
+                return `v${highestTag.major}.${highestTag.minor + 1}.0`;
+              } else {
+                return `v${highestTag.major}.${highestTag.minor}.${highestTag.patch + 1}`;
+              }
+            }
+
+            let targetVersion = '';
+
+            // 1. If triggered by an explicit git tag (other than 'latest')
+            if (context.ref.startsWith('refs/tags/') && context.ref !== 'refs/tags/latest') {
+              targetVersion = context.ref.replace('refs/tags/', '');
+              console.log('Triggered by explicit git tag:', targetVersion);
+            } else if (context.payload.inputs && context.payload.inputs.custom_version) {
+              // 2. If specified via manual workflow_dispatch input
+              const custom = context.payload.inputs.custom_version.trim();
+              targetVersion = custom.startsWith('v') ? custom : 'v' + custom;
+              console.log('Manual version specified:', targetVersion);
+            } else {
+              // 3. Auto-bump next version based on existing tags and package.json
+              const tagsResponse = await github.paginate(github.rest.repos.listTags, {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                per_page: 100
+              });
+              const tagNames = tagsResponse.map(t => t.name);
+              console.log('Found existing tags in repository:', tagNames);
+
+              const fs = require('fs');
+              let pkgVersion = '0.3.0';
+              try {
+                const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+                if (pkg.version) pkgVersion = pkg.version;
+              } catch (e) {
+                console.log('Could not read package.json version:', e.message);
+              }
+
+              const bumpType = (context.payload.inputs && context.payload.inputs.bump_type) || 'patch';
+              targetVersion = getNextVersion(tagNames, pkgVersion, bumpType);
+              console.log(`Calculated next version (${bumpType}):`, targetVersion);
+            }
+
+            // Create target git tag if it does not already exist
+            try {
+              await github.rest.git.createRef({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                ref: 'refs/tags/' + targetVersion,
+                sha: context.sha
+              });
+              console.log('Created git tag:', targetVersion);
+            } catch (err) {
+              console.log('Note on tag creation:', err.message);
+            }
+
+            // Update or create 'latest' tag
+            const latestRef = 'tags/latest';
             try {
               await github.rest.git.updateRef({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                ref: ref,
+                ref: latestRef,
                 sha: context.sha,
                 force: true
               });
-              console.log('Updated existing tag refs/' + ref + ' to ' + context.sha);
+              console.log('Updated refs/' + latestRef + ' to ' + context.sha);
             } catch (err) {
               await github.rest.git.createRef({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                ref: 'refs/' + ref,
+                ref: 'refs/' + latestRef,
                 sha: context.sha
               });
-              console.log('Created new tag refs/' + ref + ' at ' + context.sha);
+              console.log('Created refs/' + latestRef + ' at ' + context.sha);
             }
 
-      - name: Publish or Update GitHub Release
+            core.setOutput('version_tag', targetVersion);
+
+      - name: Publish Versioned GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || 'latest' }}
-          name: ${{ github.ref_type == 'tag' && github.ref_name || 'Latest Build (main)' }}
-          prerelease: ${{ github.ref_type != 'tag' }}
-          make_latest: ${{ github.ref_type == 'tag' }}
+          tag_name: ${{ steps.versioning.outputs.version_tag }}
+          name: ${{ steps.versioning.outputs.version_tag }}
+          prerelease: false
+          make_latest: true
+          target_commitish: ${{ github.sha }}
+          generate_release_notes: true
+          files: |
+            photogal-standalone-linux-x64.tar.gz
+            photogal-standalone-linux-x64.tar.gz.sha256
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Sync Latest GitHub Release Asset
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: 'Latest Build (main)'
+          prerelease: false
+          make_latest: false
           target_commitish: ${{ github.sha }}
           files: |
             photogal-standalone-linux-x64.tar.gz
