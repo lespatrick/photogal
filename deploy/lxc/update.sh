@@ -46,32 +46,48 @@ echo -e "${BLUE}==>${NC} Updating photogal..."
 ARCH=$(uname -m)
 
 # ------------------------------------------------------------------------------
-# RESCUE & MIGRATE: Rescue any database or photos saved in .next/standalone
+# RESCUE & MIGRATE: Move .next/standalone data as primary production data
 # ------------------------------------------------------------------------------
 rescue_standalone_data() {
-    # Check if .next/standalone/data has a database that is NOT a symlink
-    if [ -f "$INSTALL_DIR/.next/standalone/data/photogal.db" ] && [ ! -L "$INSTALL_DIR/.next/standalone/data/photogal.db" ]; then
-        local standalone_size root_size
-        standalone_size=$(stat -c%s "$INSTALL_DIR/.next/standalone/data/photogal.db" 2>/dev/null || stat -f%z "$INSTALL_DIR/.next/standalone/data/photogal.db" 2>/dev/null || echo 0)
-        root_size=0
-        if [ -f "$INSTALL_DIR/data/photogal.db" ] && [ ! -L "$INSTALL_DIR/data/photogal.db" ]; then
-            root_size=$(stat -c%s "$INSTALL_DIR/data/photogal.db" 2>/dev/null || stat -f%z "$INSTALL_DIR/data/photogal.db" 2>/dev/null || echo 0)
-        fi
+    # 1. Stop service first so SQLite checkpoints WAL cleanly before file operations
+    if command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet photogal.service 2>/dev/null; then
+        echo -e "${BLUE}==>${NC} Stopping photogal service for data migration..."
+        systemctl stop photogal.service 2>/dev/null || true
+    fi
 
-        # If root database is missing, empty, or standalone has a larger database
-        if [ "$root_size" -lt 10000 ] || [ "$standalone_size" -gt "$root_size" ]; then
-            echo -e "${YELLOW}==>${NC} Rescuing database from legacy .next/standalone location to $INSTALL_DIR/data/..."
+    # 2. Treat .next/standalone/data as primary production database if it exists and is not a symlink
+    if [ -d "$INSTALL_DIR/.next/standalone/data" ] && [ ! -L "$INSTALL_DIR/.next/standalone/data" ]; then
+        if [ -f "$INSTALL_DIR/.next/standalone/data/photogal.db" ]; then
+            echo -e "${YELLOW}==>${NC} Migrating primary production database from .next/standalone/data to $INSTALL_DIR/data/..."
             mkdir -p "$INSTALL_DIR/data"
             cp -a "$INSTALL_DIR/.next/standalone/data/." "$INSTALL_DIR/data/"
+            echo -e "${GREEN}✓${NC} Database successfully moved to primary path."
         fi
     fi
 
-    # Check if .next/standalone/storage/galleries has folders and is NOT a symlink
+    # 3. Treat .next/standalone/storage/galleries as primary storage if it exists and is not a symlink
     if [ -d "$INSTALL_DIR/.next/standalone/storage/galleries" ] && [ ! -L "$INSTALL_DIR/.next/standalone/storage/galleries" ]; then
-        echo -e "${YELLOW}==>${NC} Rescuing photo galleries from legacy .next/standalone location..."
+        echo -e "${YELLOW}==>${NC} Migrating photo galleries from .next/standalone/storage to $INSTALL_DIR/storage/..."
         mkdir -p "$INSTALL_DIR/storage/galleries"
-        cp -an "$INSTALL_DIR/.next/standalone/storage/galleries/." "$INSTALL_DIR/storage/galleries/" 2>/dev/null || \
-        cp -a "$INSTALL_DIR/.next/standalone/storage/galleries/." "$INSTALL_DIR/storage/galleries/" 2>/dev/null || true
+        cp -a "$INSTALL_DIR/.next/standalone/storage/galleries/." "$INSTALL_DIR/storage/galleries/"
+        echo -e "${GREEN}✓${NC} Photos successfully moved to primary storage path."
+    fi
+}
+
+# ------------------------------------------------------------------------------
+# POST-UPDATE CLEANUP: Remove legacy standalone data directories after success
+# ------------------------------------------------------------------------------
+cleanup_standalone_data() {
+    if [ -d "$INSTALL_DIR/.next/standalone" ]; then
+        echo -e "${BLUE}==>${NC} Cleaning up legacy standalone data and ensuring symlinks..."
+        if [ -d "$INSTALL_DIR/.next/standalone/data" ] && [ ! -L "$INSTALL_DIR/.next/standalone/data" ]; then
+            rm -rf "$INSTALL_DIR/.next/standalone/data"
+        fi
+        if [ -d "$INSTALL_DIR/.next/standalone/storage" ] && [ ! -L "$INSTALL_DIR/.next/standalone/storage" ]; then
+            rm -rf "$INSTALL_DIR/.next/standalone/storage"
+        fi
+        ln -sfn "$INSTALL_DIR/data" "$INSTALL_DIR/.next/standalone/data"
+        ln -sfn "$INSTALL_DIR/storage" "$INSTALL_DIR/.next/standalone/storage"
     fi
 }
 
@@ -207,6 +223,9 @@ fast_update() {
         systemctl status photogal.service --no-pager || true
     fi
 
+    # Post-update cleanup: remove legacy standalone data and ensure proper symlinks
+    cleanup_standalone_data
+
     echo -e "\n${GREEN}✓ photogal updated instantly via pre-built package!${NC}"
     rm -rf "$CLEANUP_DIR"
     CLEANUP_DIR=""
@@ -297,6 +316,9 @@ source_update() {
         sleep 2
         systemctl status photogal.service --no-pager || true
     fi
+
+    # Post-update cleanup: remove legacy standalone data and ensure proper symlinks
+    cleanup_standalone_data
 
     echo -e "\n${GREEN}✓ photogal updated and running from source!${NC}"
 }
