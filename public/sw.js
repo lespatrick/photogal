@@ -38,7 +38,7 @@ async function pruneMediaCache(cache) {
         await cache.delete(keys[i]);
       }
     }
-  } catch {}
+  } catch { }
 }
 
 self.addEventListener('fetch', (event) => {

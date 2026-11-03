@@ -99,7 +99,7 @@ export default function AdminDashboardPage() {
       const res = await fetch('/api/admin/passkey/list');
       const data = await parseJsonResponse(res);
       setPasskeys(data.keys || []);
-    } catch {}
+    } catch { }
   };
 
   const fetchApiTokens = async () => {
@@ -107,7 +107,7 @@ export default function AdminDashboardPage() {
       const res = await fetch('/api/admin/api-tokens');
       const data = await parseJsonResponse(res);
       setApiTokens(data.tokens || []);
-    } catch {}
+    } catch { }
   };
 
   const handleOpenSecurity = (tab: 'password' | 'passkeys' | 'integrations' = 'password') => {
@@ -138,7 +138,7 @@ export default function AdminDashboardPage() {
 
       const text = await res.text();
       let data: any = {};
-      try { data = text ? JSON.parse(text) : {}; } catch {}
+      try { data = text ? JSON.parse(text) : {}; } catch { }
 
       if (!res.ok) throw new Error(data.error || 'Błąd zmiany hasła');
 
@@ -333,7 +333,7 @@ export default function AdminDashboardPage() {
       const res = await fetch(`/api/admin/galleries/${deleteGalleryTarget.id}`, { method: 'DELETE' });
       const text = await res.text();
       let data: any = {};
-      try { data = text ? JSON.parse(text) : {}; } catch {}
+      try { data = text ? JSON.parse(text) : {}; } catch { }
       if (!res.ok) throw new Error(data.error || 'Błąd usuwania');
 
       toast(`Sesja „${deleteGalleryTarget.title}” została usunięta`, 'info');

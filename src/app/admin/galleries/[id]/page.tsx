@@ -108,7 +108,7 @@ export default function GalleryManagementPage({
         const sec = await parseJsonResponse(res);
         setSecurityInfo(sec);
       }
-    } catch {}
+    } catch { }
   }, [galleryId]);
 
   const handleResetSecurity = async () => {
