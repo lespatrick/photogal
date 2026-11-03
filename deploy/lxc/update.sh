@@ -100,11 +100,22 @@ fast_update() {
     # Verify sha256 checksum if available
     if curl -fsSL "$sha_url" -o "$tmp_dir/bundle.tar.gz.sha256" 2>/dev/null; then
         echo -e "${BLUE}==>${NC} Verifying SHA-256 integrity..."
-        (cd "$tmp_dir" && sha256sum -c bundle.tar.gz.sha256 >/dev/null 2>&1) || {
-            echo -e "${RED}Warning:${NC} Checksum verification failed. Falling back to source build."
-            return 1
-        }
-        echo -e "${GREEN}✓${NC} Checksum verified."
+        local expected_sha actual_sha
+        expected_sha=$(awk '{print $1}' "$tmp_dir/bundle.tar.gz.sha256" | tr -d ' \r\n')
+        actual_sha=""
+        if command -v sha256sum >/dev/null 2>&1; then
+            actual_sha=$(sha256sum "$tmp_dir/bundle.tar.gz" | awk '{print $1}' | tr -d ' \r\n')
+        elif command -v shasum >/dev/null 2>&1; then
+            actual_sha=$(shasum -a 256 "$tmp_dir/bundle.tar.gz" | awk '{print $1}' | tr -d ' \r\n')
+        fi
+
+        if [ -n "$expected_sha" ] && [ -n "$actual_sha" ]; then
+            if [ "$expected_sha" != "$actual_sha" ]; then
+                echo -e "${RED}Warning:${NC} Checksum mismatch (expected $expected_sha, got $actual_sha). Falling back to source build."
+                return 1
+            fi
+            echo -e "${GREEN}✓${NC} Checksum verified."
+        fi
     fi
 
     # Extract to staging directory

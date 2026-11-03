@@ -94,7 +94,22 @@ if [ "$BUILD_FROM_SOURCE" != "true" ] && [ "$ARCH" = "x86_64" ]; then
         echo -e "${BLUE}==>${NC} Downloading pre-built standalone bundle..."
         if curl -fsSL "$TARBALL_URL" -o "$TMP_DIR/bundle.tar.gz"; then
             if curl -fsSL "$SHA_URL" -o "$TMP_DIR/bundle.tar.gz.sha256" 2>/dev/null; then
-                (cd "$TMP_DIR" && sha256sum -c bundle.tar.gz.sha256 >/dev/null 2>&1) && echo -e "${GREEN}✓${NC} Checksum verified."
+                EXPECTED_SHA=$(awk '{print $1}' "$TMP_DIR/bundle.tar.gz.sha256" | tr -d ' \r\n')
+                ACTUAL_SHA=""
+                if command -v sha256sum >/dev/null 2>&1; then
+                    ACTUAL_SHA=$(sha256sum "$TMP_DIR/bundle.tar.gz" | awk '{print $1}' | tr -d ' \r\n')
+                elif command -v shasum >/dev/null 2>&1; then
+                    ACTUAL_SHA=$(shasum -a 256 "$TMP_DIR/bundle.tar.gz" | awk '{print $1}' | tr -d ' \r\n')
+                fi
+
+                if [ -n "$EXPECTED_SHA" ] && [ -n "$ACTUAL_SHA" ]; then
+                    if [ "$EXPECTED_SHA" = "$ACTUAL_SHA" ]; then
+                        echo -e "${GREEN}✓${NC} Checksum verified."
+                    else
+                        echo -e "${YELLOW}Warning:${NC} Checksum verification failed. Recompiling from source..."
+                        INSTALLED_VIA_PREBUILT="false"
+                    fi
+                fi
             fi
 
             echo -e "${BLUE}==>${NC} Extracting application..."
