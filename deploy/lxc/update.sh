@@ -18,8 +18,31 @@ CLEANUP_DIR=""
 trap '[ -n "${CLEANUP_DIR:-}" ] && rm -rf "$CLEANUP_DIR"' EXIT
 
 # Parse CLI options
+get_current_version() {
+    if [ -f "$INSTALL_DIR/.version" ]; then
+        cat "$INSTALL_DIR/.version" | tr -d ' \r\n'
+    elif [ -d "$INSTALL_DIR/.git" ]; then
+        git -C "$INSTALL_DIR" describe --tags --always 2>/dev/null || echo "unknown"
+    elif [ -f "$INSTALL_DIR/package.json" ]; then
+        local pkg_v
+        pkg_v=$(grep -m1 '"version"' "$INSTALL_DIR/package.json" | awk -F '"' '{print $4}' 2>/dev/null || true)
+        if [ -n "$pkg_v" ]; then
+            echo "v$pkg_v"
+        else
+            echo "unknown"
+        fi
+    else
+        echo "unknown"
+    fi
+}
+
 for arg in "$@"; do
     case "$arg" in
+        --version|-v)
+            CURRENT_VER=$(get_current_version)
+            echo "photogal ${CURRENT_VER}"
+            exit 0
+            ;;
         --build-from-source|-s)
             BUILD_FROM_SOURCE="true"
             ;;
@@ -29,6 +52,7 @@ for arg in "$@"; do
         --help|-h)
             echo "Usage: ./update.sh [OPTIONS]"
             echo "Options:"
+            echo "  --version, -v             Display current installed photogal version"
             echo "  --build-from-source, -s   Force recompilation from source (git pull + npm build)"
             echo "  --tag=<tag>               Install specific GitHub Release tag (default: latest)"
             echo "  --help, -h                Show this help message"
@@ -42,7 +66,7 @@ if [ ! -d "$INSTALL_DIR" ]; then
     exit 1
 fi
 
-echo -e "${BLUE}==>${NC} Updating photogal..."
+CURRENT_VER=$(get_current_version)
 ARCH=$(uname -m)
 
 # ------------------------------------------------------------------------------
@@ -133,10 +157,36 @@ backup_user_data() {
 # FAST PATH: Download pre-built standalone bundle from GitHub Actions Releases
 # ------------------------------------------------------------------------------
 fast_update() {
-    local tarball_url="https://github.com/${PHOTOGAL_REPO}/releases/download/${RELEASE_TAG}/photogal-standalone-linux-x64.tar.gz"
+    local target_ver="$RELEASE_TAG"
+    if [ "$RELEASE_TAG" = "latest" ]; then
+        # 1. Query GitHub Releases API for latest published release tag
+        local api_tag
+        api_tag=$(curl -fsSL "https://api.github.com/repos/${PHOTOGAL_REPO}/releases/latest" 2>/dev/null | grep -m1 '"tag_name"' | awk -F '"' '{print $4}' | tr -d ' \r\n' || true)
+        if [ -n "$api_tag" ] && [ "$api_tag" != "latest" ]; then
+            target_ver="$api_tag"
+        else
+            # 2. Fallback to web redirect
+            local redirect_tag
+            redirect_tag=$(curl -fsSL -o /dev/null -w "%{url_effective}" "https://github.com/${PHOTOGAL_REPO}/releases/latest" 2>/dev/null | sed 's|.*/tag/||' | tr -d ' \r\n' || true)
+            if [ -n "$redirect_tag" ] && [ "$redirect_tag" != "latest" ]; then
+                target_ver="$redirect_tag"
+            fi
+        fi
+    fi
+
+    echo -e "${BLUE}==>${NC} Updating photogal..."
+    echo -e "    ${BLUE}•${NC} Currently installed: ${YELLOW}${CURRENT_VER}${NC}"
+    echo -e "    ${BLUE}•${NC} Target version:      ${GREEN}${target_ver}${NC}"
+    echo -e "    ${BLUE}•${NC} Architecture:        ${ARCH}"
+
+    local tarball_url="https://github.com/${PHOTOGAL_REPO}/releases/download/${target_ver}/photogal-standalone-linux-x64.tar.gz"
+    # Fallback if target_ver URL is unavailable
+    if ! curl -fsSLI "$tarball_url" >/dev/null 2>&1; then
+        tarball_url="https://github.com/${PHOTOGAL_REPO}/releases/download/${RELEASE_TAG}/photogal-standalone-linux-x64.tar.gz"
+    fi
     local sha_url="${tarball_url}.sha256"
 
-    echo -e "${BLUE}==>${NC} Checking for pre-built release package ($ARCH) from GitHub Actions..."
+    echo -e "${BLUE}==>${NC} Checking for pre-built release package ($target_ver) from GitHub Actions..."
     
     # Check if release asset exists
     if ! curl -fsSLI "$tarball_url" >/dev/null 2>&1; then
@@ -223,10 +273,15 @@ fast_update() {
         systemctl status photogal.service --no-pager || true
     fi
 
+    # Persist the active installed version
+    echo "$target_ver" > "$INSTALL_DIR/.version"
+
     # Post-update cleanup: remove legacy standalone data and ensure proper symlinks
     cleanup_standalone_data
 
-    echo -e "\n${GREEN}✓ photogal updated instantly via pre-built package!${NC}"
+    echo -e "\n${GREEN}✓ photogal updated instantly via pre-built package (${target_ver})!${NC}"
+    echo -e "  Previous version:  ${YELLOW}${CURRENT_VER}${NC}"
+    echo -e "  Installed version: ${GREEN}${target_ver}${NC}"
     rm -rf "$CLEANUP_DIR"
     CLEANUP_DIR=""
     return 0
@@ -237,6 +292,7 @@ fast_update() {
 # ------------------------------------------------------------------------------
 source_update() {
     echo -e "${BLUE}==>${NC} Compiling from source..."
+    echo -e "    ${BLUE}•${NC} Currently installed: ${YELLOW}${CURRENT_VER}${NC}"
 
     # Pre-update automated backup
     backup_user_data
@@ -316,10 +372,17 @@ source_update() {
         systemctl status photogal.service --no-pager || true
     fi
 
+    # Persist the active installed version
+    local target_ver
+    target_ver=$(git -C "$INSTALL_DIR" describe --tags --always 2>/dev/null || git -C "$INSTALL_DIR" rev-parse --short HEAD 2>/dev/null || echo "source")
+    echo "$target_ver" > "$INSTALL_DIR/.version"
+
     # Post-update cleanup: remove legacy standalone data and ensure proper symlinks
     cleanup_standalone_data
 
-    echo -e "\n${GREEN}✓ photogal updated and running from source!${NC}"
+    echo -e "\n${GREEN}✓ photogal updated and running from source (${target_ver})!${NC}"
+    echo -e "  Previous version:  ${YELLOW}${CURRENT_VER}${NC}"
+    echo -e "  Installed version: ${GREEN}${target_ver}${NC}"
 }
 
 # Run fast update for x86_64 unless source compilation requested
