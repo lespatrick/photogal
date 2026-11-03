@@ -172,12 +172,10 @@ if [ "$INSTALLED_VIA_PREBUILT" != "true" ]; then
     fi
 fi
 
-# 6. Ensure persistent directories exist and symlink if needed
+# 6. Ensure persistent directories exist and purge standalone data
 mkdir -p "$INSTALL_DIR/data" "$INSTALL_DIR/storage"
 if [ -d "$INSTALL_DIR/.next/standalone" ]; then
     rm -rf "$INSTALL_DIR/.next/standalone/data" "$INSTALL_DIR/.next/standalone/storage"
-    ln -sfn "$INSTALL_DIR/data" "$INSTALL_DIR/.next/standalone/data"
-    ln -sfn "$INSTALL_DIR/storage" "$INSTALL_DIR/.next/standalone/storage"
 fi
 
 # 7. Create default .env file if it does not exist

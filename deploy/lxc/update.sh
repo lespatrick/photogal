@@ -75,19 +75,22 @@ rescue_standalone_data() {
 }
 
 # ------------------------------------------------------------------------------
-# POST-UPDATE CLEANUP: Remove legacy standalone data directories after success
+# POST-UPDATE CLEANUP: Completely remove legacy standalone data paths (no symlinks)
 # ------------------------------------------------------------------------------
 cleanup_standalone_data() {
     if [ -d "$INSTALL_DIR/.next/standalone" ]; then
-        echo -e "${BLUE}==>${NC} Cleaning up legacy standalone data and ensuring symlinks..."
+        echo -e "${BLUE}==>${NC} Removing legacy standalone data and storage paths..."
         if [ -d "$INSTALL_DIR/.next/standalone/data" ] && [ ! -L "$INSTALL_DIR/.next/standalone/data" ]; then
             rm -rf "$INSTALL_DIR/.next/standalone/data"
+        elif [ -L "$INSTALL_DIR/.next/standalone/data" ]; then
+            rm -f "$INSTALL_DIR/.next/standalone/data"
         fi
+
         if [ -d "$INSTALL_DIR/.next/standalone/storage" ] && [ ! -L "$INSTALL_DIR/.next/standalone/storage" ]; then
             rm -rf "$INSTALL_DIR/.next/standalone/storage"
+        elif [ -L "$INSTALL_DIR/.next/standalone/storage" ]; then
+            rm -f "$INSTALL_DIR/.next/standalone/storage"
         fi
-        ln -sfn "$INSTALL_DIR/data" "$INSTALL_DIR/.next/standalone/data"
-        ln -sfn "$INSTALL_DIR/storage" "$INSTALL_DIR/.next/standalone/storage"
     fi
 }
 
@@ -196,13 +199,6 @@ fast_update() {
     # Sync extracted files into INSTALL_DIR, preserving existing data, storage, and .env
     cp -a "$tmp_dir/extracted/." "$INSTALL_DIR/"
 
-    # Re-apply symlinks for data and storage if standalone uses nested folder
-    if [ -d "$INSTALL_DIR/.next/standalone" ]; then
-        rm -rf "$INSTALL_DIR/.next/standalone/data" "$INSTALL_DIR/.next/standalone/storage"
-        ln -sfn "$INSTALL_DIR/data" "$INSTALL_DIR/.next/standalone/data"
-        ln -sfn "$INSTALL_DIR/storage" "$INSTALL_DIR/.next/standalone/storage"
-    fi
-
     # Update systemd service definition and launcher
     if [ -f "$INSTALL_DIR/deploy/lxc/photogal.service" ] && [ -d /etc/systemd/system ]; then
         cp "$INSTALL_DIR/deploy/lxc/photogal.service" /etc/systemd/system/photogal.service
@@ -300,8 +296,6 @@ source_update() {
 
         mkdir -p "$INSTALL_DIR/data" "$INSTALL_DIR/storage"
         rm -rf "$INSTALL_DIR/.next/standalone/data" "$INSTALL_DIR/.next/standalone/storage"
-        ln -sfn "$INSTALL_DIR/data" "$INSTALL_DIR/.next/standalone/data"
-        ln -sfn "$INSTALL_DIR/storage" "$INSTALL_DIR/.next/standalone/storage"
     fi
 
     # 7. Fix directory permissions
