@@ -1032,6 +1032,69 @@ describe('Photogal Core & Security Integration Test Suite', () => {
     activeDb.prepare('DELETE FROM galleries WHERE id = ?').run(galleryId);
     activeDb.prepare('DELETE FROM admins WHERE id = ?').run(adminId);
   });
+
+  test('Client selections POST correctly handles liking, unliking, and toggling photo selections', async () => {
+    const activeDb = db.default || db;
+    const galleryId = 'test-selection-gal-id';
+    const slug = 'test-selection-gal-slug';
+    const photoId = 'test-selection-photo-id';
+
+    activeDb.prepare(`
+      INSERT OR REPLACE INTO galleries (id, slug, title, shoot_date, pin_code, pin_version, max_selections, status)
+      VALUES (?, ?, ?, ?, ?, 1, 10, 'active')
+    `).run(galleryId, slug, 'Selection Test Gallery', '2026-11-03', '1234');
+
+    activeDb.prepare(`
+      INSERT OR REPLACE INTO photos (id, gallery_id, filename, original_path, thumb_path, preview_path, width, height, aspect_ratio, file_size)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(photoId, galleryId, 'photo.jpg', 'p.jpg', 't.jpg', 'prev.jpg', 800, 600, 1.33, 1000);
+
+    const clientToken = createClientToken(galleryId, 1);
+    const { POST: postSelection } = await import('../src/app/api/client/galleries/[slug]/selections/route.ts');
+
+    // 1. Like photo
+    const likeReq = new NextRequest(`http://localhost:3000/api/client/galleries/${slug}/selections`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-client-token': clientToken,
+      },
+      body: JSON.stringify({ photoId, action: 'like' }),
+    });
+
+    const likeRes = await postSelection(likeReq, { params: Promise.resolve({ slug }) });
+    assert.equal(likeRes.status, 200, 'Liking photo must return 200');
+    const likeData = await likeRes.json();
+    assert.equal(likeData.isSelected, true, 'Photo must be marked as selected');
+    assert.ok(likeData.selectedIds.includes(photoId), 'selectedIds must include photoId');
+
+    const dbRowAfterLike = activeDb.prepare('SELECT id FROM selections WHERE gallery_id = ? AND photo_id = ?').get(galleryId, photoId);
+    assert.ok(dbRowAfterLike, 'Database must have a selection row after like');
+
+    // 2. Unlike photo (deselecting)
+    const unlikeReq = new NextRequest(`http://localhost:3000/api/client/galleries/${slug}/selections`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-client-token': clientToken,
+      },
+      body: JSON.stringify({ photoId, action: 'unlike' }),
+    });
+
+    const unlikeRes = await postSelection(unlikeReq, { params: Promise.resolve({ slug }) });
+    assert.equal(unlikeRes.status, 200, 'Unliking photo must return 200');
+    const unlikeData = await unlikeRes.json();
+    assert.equal(unlikeData.isSelected, false, 'Photo must be marked as unselected');
+    assert.equal(unlikeData.selectedIds.includes(photoId), false, 'selectedIds must not include photoId');
+
+    const dbRowAfterUnlike = activeDb.prepare('SELECT id FROM selections WHERE gallery_id = ? AND photo_id = ?').get(galleryId, photoId);
+    assert.equal(dbRowAfterUnlike, undefined, 'Database must not have a selection row after unlike');
+
+    // Cleanup
+    activeDb.prepare('DELETE FROM selections WHERE gallery_id = ?').run(galleryId);
+    activeDb.prepare('DELETE FROM photos WHERE gallery_id = ?').run(galleryId);
+    activeDb.prepare('DELETE FROM galleries WHERE id = ?').run(galleryId);
+  });
 });
 
 

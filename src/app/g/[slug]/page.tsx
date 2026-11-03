@@ -65,6 +65,8 @@ export default function ClientGalleryPage({
   const [gallery, setGallery] = useState<GalleryPublicData | null>(null);
   const [photos, setPhotos] = useState<PhotoItem[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const selectedIdsRef = useRef<Set<string>>(selectedIds);
+  selectedIdsRef.current = selectedIds;
 
   // Filter tabs: all vs selected
   const [filterMode, setFilterMode] = useState<'all' | 'selected'>('all');
@@ -171,9 +173,12 @@ export default function ClientGalleryPage({
 
     const token = getClientToken();
 
-    let isCurrentlySelected = false;
+    // Determine synchronously whether the photo is currently selected using the ref
+    const isCurrentlySelected = selectedIdsRef.current.has(photoId);
+    const nextAction = isCurrentlySelected ? 'unlike' : 'like';
+
+    // Optimistically update local state immediately
     setSelectedIds((prev) => {
-      isCurrentlySelected = prev.has(photoId);
       const next = new Set(prev);
       if (isCurrentlySelected) {
         next.delete(photoId);
@@ -196,7 +201,7 @@ export default function ClientGalleryPage({
         headers,
         body: JSON.stringify({
           photoId,
-          action: isCurrentlySelected ? 'unlike' : 'like',
+          action: nextAction,
         }),
       });
 
@@ -262,7 +267,7 @@ export default function ClientGalleryPage({
       } else if (e.key === 'ArrowLeft') {
         if (currentList.length <= 1) return;
         setLightboxIndex((prev) => (prev !== null && prev > 0 ? prev - 1 : currentList.length - 1));
-      } else if (e.key === ' ' || e.key === 'f') {
+      } else if (e.key === ' ' || e.code === 'Space' || e.key === 'f' || e.key === 'F' || e.code === 'KeyF') {
         e.preventDefault();
         const currentPhoto = currentList[lightboxIndex];
         if (currentPhoto) handleToggleSelection(currentPhoto.id);
