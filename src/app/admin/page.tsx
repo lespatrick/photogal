@@ -94,26 +94,26 @@ export default function AdminDashboardPage() {
   const [deletePasskeyTarget, setDeletePasskeyTarget] = useState<{ id: string; friendly_name: string } | null>(null);
   const [deletingPasskey, setDeletingPasskey] = useState(false);
 
-  const fetchPasskeys = async () => {
+  const fetchPasskeys = useCallback(async () => {
     try {
-      const res = await fetch('/api/admin/passkey/list');
+      const res = await fetch('/api/admin/passkey/list', { cache: 'no-store' });
       const data = await parseJsonResponse(res);
       setPasskeys(data.keys || []);
     } catch { }
-  };
+  }, []);
 
-  const fetchApiTokens = async () => {
+  const fetchApiTokens = useCallback(async () => {
     try {
-      const res = await fetch('/api/admin/api-tokens');
+      const res = await fetch('/api/admin/api-tokens', { cache: 'no-store' });
       const data = await parseJsonResponse(res);
       setApiTokens(data.tokens || []);
     } catch { }
-  };
+  }, []);
 
   const handleOpenSecurity = (tab: 'password' | 'passkeys' | 'integrations' = 'password') => {
     setSecurityTab(tab);
-    if (tab === 'passkeys') fetchPasskeys();
-    if (tab === 'integrations') fetchApiTokens();
+    fetchPasskeys();
+    fetchApiTokens();
     setSecurityModalOpen(true);
   };
 
@@ -266,6 +266,13 @@ export default function AdminDashboardPage() {
   useEffect(() => {
     fetchGalleries();
   }, [fetchGalleries]);
+
+  useEffect(() => {
+    if (securityModalOpen) {
+      fetchPasskeys();
+      fetchApiTokens();
+    }
+  }, [securityModalOpen, fetchPasskeys, fetchApiTokens]);
 
   const handleLogout = async () => {
     await fetch('/api/admin/login', { method: 'DELETE' });
@@ -764,7 +771,10 @@ export default function AdminDashboardPage() {
 
               <button
                 type="button"
-                onClick={() => setSecurityTab('passkeys')}
+                onClick={() => {
+                  setSecurityTab('passkeys');
+                  fetchPasskeys();
+                }}
                 className="btn btn-ghost"
                 style={{
                   padding: '0.5rem 0.85rem',

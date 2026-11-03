@@ -5,6 +5,8 @@ import { getWebAuthnConfig, saveChallenge } from '@/lib/webauthn';
 import crypto from 'crypto';
 import { getAuthSecret, extractClientIp } from '@/lib/auth';
 
+export const dynamic = 'force-dynamic';
+
 const optionsRateLimitMap = new Map<string, { count: number; resetAt: number }>();
 const MAX_RATE_LIMIT_ENTRIES = 5000;
 

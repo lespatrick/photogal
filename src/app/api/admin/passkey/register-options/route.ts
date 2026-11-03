@@ -4,8 +4,10 @@ import db from '@/lib/db';
 import { getAdminSessionId } from '@/lib/auth';
 import { getWebAuthnConfig, saveChallenge } from '@/lib/webauthn';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(req: NextRequest) {
-  const adminId = await getAdminSessionId();
+  const adminId = await getAdminSessionId(req);
   if (!adminId) {
     return NextResponse.json({ error: 'Brak autoryzacji' }, { status: 401 });
   }
@@ -45,5 +47,9 @@ export async function GET(req: NextRequest) {
 
   saveChallenge(options.challenge, 'admin_register', adminId);
 
-  return NextResponse.json(options);
+  return NextResponse.json(options, {
+    headers: {
+      'Cache-Control': 'no-store, no-cache, must-revalidate',
+    },
+  });
 }

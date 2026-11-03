@@ -2,8 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import db from '@/lib/db';
 import { getAdminSessionId } from '@/lib/auth';
 
-export async function GET() {
-  const adminId = await getAdminSessionId();
+export const dynamic = 'force-dynamic';
+
+export async function GET(req: NextRequest) {
+  const adminId = await getAdminSessionId(req);
   if (!adminId) {
     return NextResponse.json({ error: 'Brak autoryzacji' }, { status: 401 });
   }
@@ -11,15 +13,22 @@ export async function GET() {
   const keys = db.prepare(`
     SELECT id, friendly_name, device_type, backed_up, created_at, last_used_at
     FROM authenticators
-    WHERE admin_id = ?
+    WHERE admin_id = ? OR admin_id = (SELECT id FROM admins LIMIT 1)
     ORDER BY created_at DESC
   `).all(adminId);
 
-  return NextResponse.json({ keys });
+  return NextResponse.json(
+    { keys },
+    {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+      },
+    }
+  );
 }
 
 export async function DELETE(req: NextRequest) {
-  const adminId = await getAdminSessionId();
+  const adminId = await getAdminSessionId(req);
   if (!adminId) {
     return NextResponse.json({ error: 'Brak autoryzacji' }, { status: 401 });
   }
@@ -36,6 +45,10 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: 'Brak lub nieprawidłowe ID klucza' }, { status: 400 });
   }
 
-  db.prepare('DELETE FROM authenticators WHERE id = ? AND admin_id = ?').run(id.trim(), adminId);
+  db.prepare(`
+    DELETE FROM authenticators 
+    WHERE id = ? AND (admin_id = ? OR admin_id = (SELECT id FROM admins LIMIT 1))
+  `).run(id.trim(), adminId);
+
   return NextResponse.json({ success: true });
 }
