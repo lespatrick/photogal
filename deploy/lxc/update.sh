@@ -348,6 +348,7 @@ source_update() {
         cp -r "$INSTALL_DIR/public" "$INSTALL_DIR/.next/standalone/" 2>/dev/null || true
         mkdir -p "$INSTALL_DIR/.next/standalone/.next"
         cp -r "$INSTALL_DIR/.next/static" "$INSTALL_DIR/.next/standalone/.next/" 2>/dev/null || true
+        cp -r "$INSTALL_DIR/.next/server" "$INSTALL_DIR/.next/standalone/.next/" 2>/dev/null || true
         cp -r "$INSTALL_DIR/scripts" "$INSTALL_DIR/.next/standalone/" 2>/dev/null || true
         
         # Ensure root server.js is updated as well for consistent start.sh execution

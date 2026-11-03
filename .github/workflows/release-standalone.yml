@@ -62,10 +62,11 @@ jobs:
             fi
           fi
 
-          # Copy static files, public assets, scripts, and deployment helpers into standalone
+          # Copy static files, server chunks, public assets, scripts, and deployment helpers into standalone
           cp -r public .next/standalone/
           mkdir -p .next/standalone/.next
           cp -r .next/static .next/standalone/.next/
+          cp -r .next/server .next/standalone/.next/
           cp -r scripts .next/standalone/
           cp -r deploy .next/standalone/
 
