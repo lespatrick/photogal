@@ -129,3 +129,36 @@ Podczas instalacji lub aktualizacji:
 # Aktualizacja do konkretnego wydania (tagu)
 /opt/photogal/deploy/lxc/update.sh --tag=v1.0.0
 ```
+
+---
+
+## 🛡️ Bezpieczeństwo Danych, Kopie Zapasowe i Odzyskiwanie
+
+### Automatyczne kopie przed każdą aktualizacją
+Przed każdą aktualizacją skrypt `/opt/photogal/deploy/lxc/update.sh` wykonuje automatyczną kopię bazy danych SQLite oraz pliku `.env` w katalogu:
+`/opt/photogal/backups/backup-YYYYMMDD_HHMMSS/`
+System automatycznie zachowuje 5 najświeższych kopii zapasowych.
+
+### Przywrócenie bazy danych z kopii zapasowej:
+Jeśli zajdzie potrzeba przywrócenia stanu bazy sprzed aktualizacji:
+```bash
+# 1. Zatrzymaj usługę
+systemctl stop photogal
+
+# 2. Skopiuj bazę z wybranego folderu kopii zapasowej
+cp -a /opt/photogal/backups/backup-<TIMESTAMP>/data/. /opt/photogal/data/
+
+# 3. Uruchom usługę
+systemctl start photogal
+```
+
+### 🚑 Narzędzie ratunkowe: Odzyskiwanie galerii z dysku (Storage Scanner)
+Jeśli po wcześniejszych wersjach skryptu baza uległa wyzerowaniu, ale zdjęcia fizycznie znajdują się w `/opt/photogal/storage/galleries/`:
+```bash
+# Skanowanie i podgląd galerii do odzyskania (tryb bezpieczny / dry-run)
+node /opt/photogal/scripts/recover-galleries.js
+
+# Wykonanie odzyskania i zarejestrowanie galerii oraz zdjęć w bazie danych:
+node /opt/photogal/scripts/recover-galleries.js --execute
+```
+Narzędzie przeskanuje pliki na dysku, wyliczy wymiary zdjęć oraz odtworzy rekordy galerii z kodem PIN `1234` (możesz go zmienić w panelu `/admin`).

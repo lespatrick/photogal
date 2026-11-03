@@ -55,6 +55,13 @@ jobs:
           cp -r scripts .next/standalone/
           cp -r deploy .next/standalone/
 
+          # Strict security & data integrity: Ensure NO runtime data, databases, storage files, or env files leak into release package
+          rm -rf .next/standalone/data .next/standalone/storage .next/standalone/.env* .next/standalone/backups
+          if [ -d ".next/standalone/data" ] || [ -d ".next/standalone/storage" ]; then
+            echo "Error: persistent data or storage directories detected in standalone bundle!"
+            exit 1
+          fi
+
           # Create standalone tarball and sha256 checksum
           cd .next/standalone
           tar -czf ../../photogal-standalone-linux-x64.tar.gz .

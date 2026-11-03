@@ -99,6 +99,8 @@ if [ "$BUILD_FROM_SOURCE" != "true" ] && [ "$ARCH" = "x86_64" ]; then
 
             echo -e "${BLUE}==>${NC} Extracting application..."
             tar -xzf "$TMP_DIR/bundle.tar.gz" -C "$INSTALL_DIR"
+            # Defensively clean out any data or storage artifacts that might have been packaged in pre-built bundles
+            rm -rf "$INSTALL_DIR/data" "$INSTALL_DIR/storage" "$INSTALL_DIR/backups" "$INSTALL_DIR/.env"*
             INSTALLED_VIA_PREBUILT="true"
             echo -e "${GREEN}✓${NC} Pre-built standalone bundle installed."
         fi
@@ -156,6 +158,7 @@ fi
 # 6. Ensure persistent directories exist and symlink if needed
 mkdir -p "$INSTALL_DIR/data" "$INSTALL_DIR/storage"
 if [ -d "$INSTALL_DIR/.next/standalone" ]; then
+    rm -rf "$INSTALL_DIR/.next/standalone/data" "$INSTALL_DIR/.next/standalone/storage"
     ln -sfn "$INSTALL_DIR/data" "$INSTALL_DIR/.next/standalone/data"
     ln -sfn "$INSTALL_DIR/storage" "$INSTALL_DIR/.next/standalone/storage"
 fi
@@ -185,9 +188,9 @@ ALLOW_HTTP=${ALLOW_HTTP:-true}
 # Trust Reverse Proxy headers (X-Forwarded-For, X-Real-IP)
 TRUST_PROXY=true
 
-# Custom Storage & Database Paths (defaults to /opt/photogal/storage and /opt/photogal/data)
-# STORAGE_DIR=/mnt/nas/photos
-# DATA_DIR=/mnt/nas/data
+# Persistent Storage & Database Directories
+STORAGE_DIR=/opt/photogal/storage
+DATA_DIR=/opt/photogal/data
 
 # Optional: WebAuthn / Passkey & Domain Security (uncomment and configure for domain)
 # ALLOWED_HOSTS=gallery.yourdomain.com

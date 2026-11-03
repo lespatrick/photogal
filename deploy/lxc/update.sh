@@ -44,6 +44,35 @@ echo -e "${BLUE}==>${NC} Updating photogal..."
 ARCH=$(uname -m)
 
 # ------------------------------------------------------------------------------
+# SAFETY: Automated Snapshot / Backup of Database & Configuration
+# ------------------------------------------------------------------------------
+backup_user_data() {
+    local backup_root="$INSTALL_DIR/backups"
+    local timestamp
+    timestamp=$(date +"%Y%m%d_%H%M%S")
+    local backup_dest="$backup_root/backup-$timestamp"
+
+    if [ -d "$INSTALL_DIR/data" ] || [ -f "$INSTALL_DIR/.env" ]; then
+        echo -e "${BLUE}==>${NC} Creating automated pre-update backup at $backup_dest..."
+        mkdir -p "$backup_dest"
+        if [ -d "$INSTALL_DIR/data" ]; then
+            cp -a "$INSTALL_DIR/data" "$backup_dest/" 2>/dev/null || true
+        fi
+        if [ -f "$INSTALL_DIR/.env" ]; then
+            cp -a "$INSTALL_DIR/.env" "$backup_dest/" 2>/dev/null || true
+        fi
+
+        # Prune old backups: keep the 5 most recent
+        local old_backups
+        old_backups=$(ls -dt "$backup_root"/backup-* 2>/dev/null | tail -n +6 || true)
+        if [ -n "$old_backups" ]; then
+            echo "$old_backups" | xargs rm -rf 2>/dev/null || true
+        fi
+        echo -e "${GREEN}✓${NC} Pre-update backup created."
+    fi
+}
+
+# ------------------------------------------------------------------------------
 # FAST PATH: Download pre-built standalone bundle from GitHub Actions Releases
 # ------------------------------------------------------------------------------
 fast_update() {
@@ -57,6 +86,9 @@ fast_update() {
         echo -e "${YELLOW}Notice:${NC} Pre-built release not found at $tarball_url. Falling back to source build."
         return 1
     fi
+
+    # Perform automated backup before any file changes
+    backup_user_data
 
     local tmp_dir
     tmp_dir=$(mktemp -d /tmp/photogal-update-XXXXXX)
@@ -79,6 +111,13 @@ fast_update() {
     mkdir -p "$tmp_dir/extracted"
     tar -xzf "$tmp_dir/bundle.tar.gz" -C "$tmp_dir/extracted"
 
+    # CRITICAL DATA PROTECTION: Strip any data, storage, backups, or .env files from the bundle
+    # to guarantee user databases and media are NEVER overwritten
+    rm -rf "$tmp_dir/extracted/data"
+    rm -rf "$tmp_dir/extracted/storage"
+    rm -rf "$tmp_dir/extracted/backups"
+    rm -f "$tmp_dir/extracted/.env"*
+
     # Stop service only right before swapping files (< 2 seconds downtime)
     if command -v systemctl >/dev/null 2>&1; then
         echo -e "${BLUE}==>${NC} Stopping photogal service for file swap..."
@@ -93,6 +132,7 @@ fast_update() {
 
     # Re-apply symlinks for data and storage if standalone uses nested folder
     if [ -d "$INSTALL_DIR/.next/standalone" ]; then
+        rm -rf "$INSTALL_DIR/.next/standalone/data" "$INSTALL_DIR/.next/standalone/storage"
         ln -sfn "$INSTALL_DIR/data" "$INSTALL_DIR/.next/standalone/data"
         ln -sfn "$INSTALL_DIR/storage" "$INSTALL_DIR/.next/standalone/storage"
     fi
@@ -126,6 +166,9 @@ fast_update() {
 # ------------------------------------------------------------------------------
 source_update() {
     echo -e "${BLUE}==>${NC} Compiling from source..."
+
+    # Pre-update automated backup
+    backup_user_data
 
     # 1. Stop systemd service first so it does not loop during build
     if command -v systemctl >/dev/null 2>&1; then
@@ -179,7 +222,13 @@ source_update() {
         cp -r "$INSTALL_DIR/.next/static" "$INSTALL_DIR/.next/standalone/.next/" 2>/dev/null || true
         cp -r "$INSTALL_DIR/scripts" "$INSTALL_DIR/.next/standalone/" 2>/dev/null || true
         
+        # Ensure root server.js is updated as well for consistent start.sh execution
+        if [ -f "$INSTALL_DIR/.next/standalone/server.js" ]; then
+            cp "$INSTALL_DIR/.next/standalone/server.js" "$INSTALL_DIR/server.js" 2>/dev/null || true
+        fi
+
         mkdir -p "$INSTALL_DIR/data" "$INSTALL_DIR/storage"
+        rm -rf "$INSTALL_DIR/.next/standalone/data" "$INSTALL_DIR/.next/standalone/storage"
         ln -sfn "$INSTALL_DIR/data" "$INSTALL_DIR/.next/standalone/data"
         ln -sfn "$INSTALL_DIR/storage" "$INSTALL_DIR/.next/standalone/storage"
     fi

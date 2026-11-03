@@ -3,6 +3,17 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   serverExternalPackages: ["better-sqlite3", "sharp", "archiver"],
   output: "standalone",
+  outputFileTracingExcludes: {
+    "*": [
+      "./data/**/*",
+      "./storage/**/*",
+      "./tests/**/*",
+      "./data",
+      "./storage",
+      "./backups/**/*",
+      "./backups",
+    ],
+  },
   experimental: {
     proxyClientMaxBodySize: "10gb",
     // @ts-ignore
