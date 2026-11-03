@@ -96,8 +96,8 @@ export function resolveSafeStoragePath(relPath: string): string | null {
   // Strip any leading slashes, backslashes, or relative markers
   const cleanRel = path.normalize(relPath.trim()).replace(/^(\.\.[\/\\]|[/\\])+/, '');
   if (!cleanRel || cleanRel === '.' || cleanRel === '..') return null;
-  const fullPath = path.resolve(STORAGE_DIR, cleanRel);
-  const normalizedStorage = path.resolve(STORAGE_DIR);
+  const fullPath = path.resolve(/*turbopackIgnore: true*/ STORAGE_DIR, cleanRel);
+  const normalizedStorage = path.resolve(/*turbopackIgnore: true*/ STORAGE_DIR);
   if (!fullPath.startsWith(normalizedStorage + path.sep) || fullPath === normalizedStorage) {
     return null;
   }
