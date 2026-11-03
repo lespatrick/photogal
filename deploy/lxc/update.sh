@@ -10,10 +10,12 @@ BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
-INSTALL_DIR="/opt/photogal"
+INSTALL_DIR="${INSTALL_DIR:-/opt/photogal}"
 PHOTOGAL_REPO="${PHOTOGAL_REPO:-lespatrick/photogal}"
 BUILD_FROM_SOURCE="false"
 RELEASE_TAG="latest"
+CLEANUP_DIR=""
+trap '[ -n "${CLEANUP_DIR:-}" ] && rm -rf "$CLEANUP_DIR"' EXIT
 
 # Parse CLI options
 for arg in "$@"; do
@@ -126,9 +128,8 @@ fast_update() {
     # Perform automated backup before any file changes
     backup_user_data
 
-    local tmp_dir
-    tmp_dir=$(mktemp -d /tmp/photogal-update-XXXXXX)
-    trap 'rm -rf "$tmp_dir"' EXIT
+    CLEANUP_DIR=$(mktemp -d /tmp/photogal-update-XXXXXX)
+    local tmp_dir="$CLEANUP_DIR"
 
     echo -e "${BLUE}==>${NC} Downloading pre-built standalone bundle..."
     curl -fsSL "$tarball_url" -o "$tmp_dir/bundle.tar.gz"
@@ -148,6 +149,8 @@ fast_update() {
         if [ -n "$expected_sha" ] && [ -n "$actual_sha" ]; then
             if [ "$expected_sha" != "$actual_sha" ]; then
                 echo -e "${RED}Warning:${NC} Checksum mismatch (expected $expected_sha, got $actual_sha). Falling back to source build."
+                rm -rf "$CLEANUP_DIR"
+                CLEANUP_DIR=""
                 return 1
             fi
             echo -e "${GREEN}✓${NC} Checksum verified."
@@ -205,6 +208,8 @@ fast_update() {
     fi
 
     echo -e "\n${GREEN}✓ photogal updated instantly via pre-built package!${NC}"
+    rm -rf "$CLEANUP_DIR"
+    CLEANUP_DIR=""
     return 0
 }
 

@@ -10,10 +10,12 @@ BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
-INSTALL_DIR="/opt/photogal"
+INSTALL_DIR="${INSTALL_DIR:-/opt/photogal}"
 PHOTOGAL_REPO="${PHOTOGAL_REPO:-lespatrick/photogal}"
 BUILD_FROM_SOURCE="false"
 RELEASE_TAG="latest"
+CLEANUP_DIR=""
+trap '[ -n "${CLEANUP_DIR:-}" ] && rm -rf "$CLEANUP_DIR"' EXIT
 
 # Parse CLI options
 for arg in "$@"; do
@@ -88,8 +90,8 @@ if [ "$BUILD_FROM_SOURCE" != "true" ] && [ "$ARCH" = "x86_64" ]; then
 
     echo -e "${BLUE}==>${NC} Checking for pre-built release package ($ARCH) from GitHub Actions..."
     if curl -fsSLI "$TARBALL_URL" >/dev/null 2>&1; then
-        TMP_DIR=$(mktemp -d /tmp/photogal-install-XXXXXX)
-        trap 'rm -rf "$TMP_DIR"' EXIT
+        CLEANUP_DIR=$(mktemp -d /tmp/photogal-install-XXXXXX)
+        TMP_DIR="$CLEANUP_DIR"
 
         echo -e "${BLUE}==>${NC} Downloading pre-built standalone bundle..."
         if curl -fsSL "$TARBALL_URL" -o "$TMP_DIR/bundle.tar.gz"; then
