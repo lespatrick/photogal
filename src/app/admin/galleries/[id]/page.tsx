@@ -339,8 +339,8 @@ export default function GalleryManagementPage({
     <div className="app-container">
       {/* Top Navbar */}
       <header className="navbar">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <Link href="/admin" className="btn btn-ghost btn-icon" title="Powrót">
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', minWidth: 0 }}>
+          <Link href="/admin" className="btn btn-ghost btn-icon" title="Powrót do listy sesji">
             <ArrowLeft size={16} />
           </Link>
           <div className="brand">
@@ -348,29 +348,29 @@ export default function GalleryManagementPage({
           </div>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+        <div className="nav-actions">
           <ThemeToggle />
           <button
             onClick={() => setSettingsOpen(true)}
             className="btn btn-secondary btn-icon"
-            title="Ustawienia"
+            title="Ustawienia sesji"
           >
             <Settings size={15} />
           </button>
           <Link
             href={`/g/${gallery.slug}`}
             target="_blank"
-            className="btn btn-secondary"
-            style={{ fontSize: '0.8rem', padding: '0.45rem 0.85rem' }}
+            className="btn btn-secondary nav-btn-responsive"
+            title="Podgląd galerii klienta"
           >
-            <ExternalLink size={13} />
-            <span>Podgląd</span>
+            <ExternalLink size={14} />
+            <span className="nav-btn-text">Podgląd</span>
           </Link>
         </div>
       </header>
 
       {/* Main Content */}
-      <main className="main-content" style={{ padding: '2.5rem 2rem', maxWidth: '1600px', margin: '0 auto', width: '100%' }}>
+      <main className="main-content admin-main" style={{ maxWidth: '1600px', margin: '0 auto' }}>
         {/* Gallery Info Strip */}
         <div
           className="clean-card"

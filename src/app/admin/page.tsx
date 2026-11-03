@@ -6,7 +6,7 @@ import Link from 'next/link';
 import {
   Plus, LogOut, ExternalLink, Copy, Check,
   Heart, Trash2, X, Fingerprint, ShieldCheck, Lock,
-  Key, Download, Sliders
+  Key, Download, Sliders, Settings
 } from 'lucide-react';
 import { startRegistration } from '@simplewebauthn/browser';
 import { ThemeToggle } from '@/components/ThemeProvider';
@@ -356,39 +356,29 @@ export default function AdminDashboardPage() {
           <span>photogal</span>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <button
-            onClick={() => handleOpenSecurity('integrations')}
-            className="btn btn-secondary"
-            style={{ padding: '0.45rem 0.8rem', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.45rem' }}
-            title="Integracja z Capture One i tokeny API"
-          >
-            <Sliders size={14} />
-            <span>Capture One</span>
-          </button>
+        <div className="nav-actions">
           <button
             onClick={() => handleOpenSecurity('password')}
-            className="btn btn-secondary"
-            style={{ padding: '0.45rem 0.8rem', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.45rem' }}
-            title="Zmień hasło i zarządzaj kluczami Passkey"
+            className="btn btn-secondary nav-btn-responsive"
+            title="Ustawienia studia: hasło, Passkeys, Capture One & API"
           >
-            <ShieldCheck size={14} color="var(--accent-heart)" />
-            <span>Bezpieczeństwo</span>
+            <Settings size={15} />
+            <span className="nav-btn-text">Ustawienia</span>
           </button>
           <ThemeToggle />
           <button
             onClick={handleLogout}
-            className="btn btn-ghost"
-            style={{ padding: '0.45rem 0.8rem', fontSize: '0.8rem' }}
+            className="btn btn-ghost nav-btn-responsive"
+            title="Wyloguj z panelu fotografa"
           >
-            <LogOut size={14} />
-            <span>Wyloguj</span>
+            <LogOut size={15} />
+            <span className="nav-btn-text">Wyloguj</span>
           </button>
         </div>
       </header>
 
       {/* Main Content */}
-      <main className="main-content" style={{ padding: '2.5rem 2rem', maxWidth: '1400px', margin: '0 auto', width: '100%' }}>
+      <main className="main-content admin-main" style={{ maxWidth: '1400px', margin: '0 auto' }}>
         {/* Top Header */}
         <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end', justifyContent: 'space-between', gap: '1.5rem', marginBottom: '2.5rem' }}>
           <div>
@@ -743,9 +733,9 @@ export default function AdminDashboardPage() {
           <div className="modal-card" style={{ maxWidth: '560px' }} onClick={(e) => e.stopPropagation()}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
               <div>
-                <h2 className="serif-title" style={{ fontSize: '1.6rem' }}>Bezpieczeństwo</h2>
+                <h2 className="serif-title" style={{ fontSize: '1.6rem' }}>Ustawienia Studia</h2>
                 <p className="mono-meta" style={{ marginTop: '0.2rem' }}>
-                  Hasło administratora & Klucze biometryczne Passkey
+                  Bezpieczeństwo konta, klucze biometryczne Passkey oraz integracja Capture One
                 </p>
               </div>
               <button
@@ -764,6 +754,9 @@ export default function AdminDashboardPage() {
                 gap: '0.5rem',
                 borderBottom: '1px solid var(--border-hairline)',
                 marginBottom: '1.5rem',
+                overflowX: 'auto',
+                whiteSpace: 'nowrap',
+                paddingBottom: '0.25rem',
               }}
             >
               <button
@@ -780,10 +773,11 @@ export default function AdminDashboardPage() {
                   display: 'flex',
                   alignItems: 'center',
                   gap: '0.4rem',
+                  flexShrink: 0,
                 }}
               >
                 <Lock size={14} />
-                <span>Zmień hasło</span>
+                <span>Hasło</span>
               </button>
 
               <button
@@ -800,10 +794,11 @@ export default function AdminDashboardPage() {
                   display: 'flex',
                   alignItems: 'center',
                   gap: '0.4rem',
+                  flexShrink: 0,
                 }}
               >
                 <Fingerprint size={14} />
-                <span>Klucze Passkey {passkeys.length > 0 && `(${passkeys.length})`}</span>
+                <span>Passkeys {passkeys.length > 0 && `(${passkeys.length})`}</span>
               </button>
 
               <button
@@ -823,6 +818,7 @@ export default function AdminDashboardPage() {
                   display: 'flex',
                   alignItems: 'center',
                   gap: '0.4rem',
+                  flexShrink: 0,
                 }}
               >
                 <Sliders size={14} />

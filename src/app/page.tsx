@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ArrowRight } from 'lucide-react';
+import { ArrowRight, Lock } from 'lucide-react';
 import { ThemeToggle } from '@/components/ThemeProvider';
 
 export default function HomePage() {
@@ -25,10 +25,15 @@ export default function HomePage() {
           <span>photogal</span>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+        <div className="nav-actions">
           <ThemeToggle />
-          <Link href="/admin" className="btn btn-secondary" style={{ fontSize: '0.8rem', padding: '0.4rem 0.85rem' }}>
-            Panel Fotografa
+          <Link
+            href="/admin"
+            className="btn btn-secondary nav-btn-responsive"
+            title="Panel Fotografa"
+          >
+            <Lock size={13} className="mobile-only-icon" />
+            <span className="nav-btn-text">Panel Fotografa</span>
           </Link>
         </div>
       </header>
