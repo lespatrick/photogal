@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "test": "node --import tsx --test tests/*.test.mjs",
-    "db:check": "node scripts/check-db.js"
+    "db:check": "node scripts/check-db.js",
+    "screenshots": "node scripts/capture-screenshots.mjs"
   },
   "dependencies": {
     "@simplewebauthn/browser": "^14.0.0",
@@ -30,6 +31,7 @@
   "devDependencies": {
     "eslint": "^9",
     "eslint-config-next": "16.4.0",
+    "puppeteer-core": "^25.16.0",
     "tsx": "^4.23.15"
   }
 }

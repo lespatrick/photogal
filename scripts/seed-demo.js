@@ -259,8 +259,8 @@ async function seed() {
       order++
     );
 
-    // Pre-select 2 photos to show selection state right away
-    if (order === 2 || order === 4) {
+    // Pre-select 4 photos to show selection state right away
+    if ([2, 3, 5, 7].includes(order)) {
       db.prepare('INSERT INTO selections (id, gallery_id, photo_id) VALUES (?, ?, ?)').run(
         crypto.randomUUID(),
         galleryId,

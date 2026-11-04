@@ -22,6 +22,12 @@
 [Docker](#-konteneryzacja-docker) •
 [Struktura](#-struktura-katalogów)
 
+<br/>
+
+<p align="center">
+  <img src="docs/screenshots/hero-client-gallery.png" alt="photogal — Elegancka galeria klienta i selekcja ujęć" width="100%" style="border-radius: 8px;" />
+</p>
+
 ---
 
 </div>
@@ -56,6 +62,14 @@ Aplikacja powstała jako niezależna, self-hosted alternatywa dla komercyjnych s
 * **Strumieniowe archiwum ZIP**: Generowanie paczki ze wszystkimi lub tylko wybranymi kadrami bezpośrednio z poziomu panelu.
 * **Bezpieczne usuwanie**: Dedykowane modale potwierdzenia eliminujące przypadkowe usunięcie sesji, zdjęć lub kluczy dostępu.
 
+<p align="center">
+  <img src="docs/screenshots/admin-dashboard.png" alt="Panel Fotografa — Przegląd sesji i statystyki" width="100%" style="border-radius: 8px;" />
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/admin-gallery-export.png" alt="Zarządzanie sesją oraz modal eksportu do Lightroom i Capture One" width="100%" style="border-radius: 8px;" />
+</p>
+
 ### 2. Widok Klienta (`/g/[slug]`)
 * **PIN Gate**: Dyskretny ekran weryfikacji kodu dostępu zapobiegający nieautoryzowanemu wglądowi w sesję.
 * **Układ Masonry**: Automatycznie dopasowująca się responsywna siatka z obsługą zdjęć pionowych, poziomych i panoramicznych.
@@ -76,6 +90,18 @@ Aplikacja powstała jako niezależna, self-hosted alternatywa dla komercyjnych s
   * **Image Spoofing (Fakowanie obrazu)**: W chwili próby przechwycenia oryginalne fotografie w siatce i Lightboxie są błyskawicznie zamazywane i zastępowane redakcyjną tarczą weryfikacyjną (*Studio Proofing Shield*) z gęstym, skośnym wzorem znaku wodnego SVG oraz stemplem sesji.
   * Ochrona przed drukowaniem i eksportem do PDF (`@media print`) — automatyczne ukrywanie zdjęć z zastąpieniem ich certyfikatem praw autorskich fotografa.
 * **PWA & Offline cache**: Możliwość zainstalowania jako aplikacja na ekranie głównym telefonu lub komputera (Service Worker + Web App Manifest).
+
+<p align="center">
+  <img src="docs/screenshots/client-lightbox.png" alt="Tryb Lightbox z selekcją ujęć serduszkiem i minimalistycznymi kontrolkami" width="100%" style="border-radius: 8px;" />
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/client-pin-gate.png" alt="Dyskretna weryfikacja kodem PIN" width="85%" style="border-radius: 8px;" />
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/proofing-shield.png" alt="Studio Proofing Shield — Tarcza ochronna przeciw nieautoryzowanym zrzutom ekranu" width="100%" style="border-radius: 8px;" />
+</p>
 
 ---
 
